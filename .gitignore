@@ -1,0 +1,33 @@
+# Binaries
+/bin/
+/dist/
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# Local runtime data (panel CA, daemon identity, dev secrets)
+/data/
+*.key
+!/**/testdata/*.key
+
+# Environment files (only .env.example is committed)
+.env
+deploy/.env
+
+# Node / web
+node_modules/
+web/.svelte-kit/
+web/build/
+web/dist/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Tooling harness state
+.mimosa/
+.zcode/
