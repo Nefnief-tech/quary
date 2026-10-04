@@ -1,0 +1,65 @@
+// Quarry node agent protocol. The panel serves NodeAgentService; node
+// daemons dial out to the panel (no inbound ports on game hosts).
+syntax = "proto3";
+
+package quarry.node.v1;
+
+option go_package = "quarry.dev/quarry/proto/gen/go/quarry/node/v1;nodesv1";
+
+// NodeAgentService is served by the panel; node daemons act as gRPC clients.
+// A fresh daemon's first call is RegisterNode, exchanging a single-use
+// enrollment token for a signed client certificate. Every subsequent RPC
+// must present that client certificate (mTLS); the node identity is taken
+// from the certificate, never from request payloads.
+service NodeAgentService {
+  // Enrolls a daemon: validates the enrollment token, signs the daemon's CSR
+  // and returns the node identity. The private key never leaves the daemon.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+
+  // Bidirectional heartbeat stream. The daemon sends a HeartbeatRequest
+  // every ~10 seconds; the panel acks each beat (later: carrying desired
+  // configuration and reload hints).
+  rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+}
+
+message RegisterNodeRequest {
+  // Single-use enrollment token issued via the panel admin API.
+  string enrollment_token = 1;
+  // Human-readable node name from the daemon config; must match the node
+  // record the token was issued for.
+  string name = 2;
+  // PEM-encoded PKCS#10 certificate signing request for the daemon's
+  // long-term key. The panel overrides any SANs in the CSR.
+  bytes csr_pem = 3;
+  // Descriptive information about the daemon host.
+  DaemonInfo info = 4;
+}
+
+message RegisterNodeResponse {
+  string node_id = 1;
+  // The panel CA certificate (PEM), so the daemon can verify the panel on
+  // every later connection.
+  bytes ca_pem = 2;
+  // Signed client certificate (PEM) for the daemon's key.
+  bytes cert_pem = 3;
+}
+
+message DaemonInfo {
+  string daemon_version = 1;
+  string hostname = 2;
+  string docker_version = 3;
+  string os = 4;
+  string arch = 5;
+}
+
+message HeartbeatRequest {
+  uint64 uptime_seconds = 1;
+  DaemonInfo info = 2;
+  // Milliseconds since the Unix epoch, per the daemon's clock.
+  int64 sent_at_unix_milli = 3;
+}
+
+message HeartbeatResponse {
+  // Milliseconds since the Unix epoch, per the panel's clock.
+  int64 server_time_unix_milli = 1;
+}
