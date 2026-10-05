@@ -14,7 +14,7 @@ import (
 
 const allocationServerCount = `-- name: AllocationServerCount :one
 SELECT count(*) FROM servers
-WHERE allocation_id = $1 AND id != $2
+WHERE (allocation_id = $1 OR map_allocation_id = $1) AND id != $2
 `
 
 type AllocationServerCountParams struct {
@@ -68,6 +68,23 @@ DELETE FROM allocations WHERE id = $1
 func (q *Queries) DeleteAllocation(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteAllocation, id)
 	return err
+}
+
+const getAllocation = `-- name: GetAllocation :one
+SELECT id, node_id, ip, port, created_at FROM allocations WHERE id = $1
+`
+
+func (q *Queries) GetAllocation(ctx context.Context, id uuid.UUID) (Allocation, error) {
+	row := q.db.QueryRow(ctx, getAllocation, id)
+	var i Allocation
+	err := row.Scan(
+		&i.ID,
+		&i.NodeID,
+		&i.Ip,
+		&i.Port,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getAllocationForServer = `-- name: GetAllocationForServer :one
@@ -153,7 +170,7 @@ func (q *Queries) ListAllocationsByNode(ctx context.Context, nodeID uuid.UUID) (
 
 const pickFreeAllocation = `-- name: PickFreeAllocation :one
 SELECT a.id, a.node_id, a.ip, a.port, a.created_at FROM allocations a
-LEFT JOIN servers s ON s.allocation_id = a.id
+LEFT JOIN servers s ON s.allocation_id = a.id OR s.map_allocation_id = a.id
 WHERE a.node_id = $1 AND s.id IS NULL
 ORDER BY a.created_at
 LIMIT 1
@@ -162,6 +179,36 @@ FOR UPDATE OF a SKIP LOCKED
 
 func (q *Queries) PickFreeAllocation(ctx context.Context, nodeID uuid.UUID) (Allocation, error) {
 	row := q.db.QueryRow(ctx, pickFreeAllocation, nodeID)
+	var i Allocation
+	err := row.Scan(
+		&i.ID,
+		&i.NodeID,
+		&i.Ip,
+		&i.Port,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const pickFreeAllocationExcluding = `-- name: PickFreeAllocationExcluding :one
+SELECT a.id, a.node_id, a.ip, a.port, a.created_at FROM allocations a
+LEFT JOIN servers s ON s.allocation_id = a.id OR s.map_allocation_id = a.id
+WHERE a.node_id = $1 AND a.id != $2 AND s.id IS NULL
+ORDER BY a.created_at
+LIMIT 1
+FOR UPDATE OF a SKIP LOCKED
+`
+
+type PickFreeAllocationExcludingParams struct {
+	NodeID uuid.UUID `json:"node_id"`
+	ID     uuid.UUID `json:"id"`
+}
+
+// Same, but skips an allocation this transaction already row-locked
+// (SKIP LOCKED does not exclude own-transaction locks). Used to claim a
+// second, distinct port for the map webserver during create.
+func (q *Queries) PickFreeAllocationExcluding(ctx context.Context, arg PickFreeAllocationExcludingParams) (Allocation, error) {
+	row := q.db.QueryRow(ctx, pickFreeAllocationExcluding, arg.NodeID, arg.ID)
 	var i Allocation
 	err := row.Scan(
 		&i.ID,

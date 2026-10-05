@@ -147,6 +147,17 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		return m.Kill(ctx, action.KillServer, em)
 	case *nodesv1.Command_SendCommand:
 		return m.SendCommand(action.SendCommand)
+	case *nodesv1.Command_PollPlayers:
+		list, err := m.PollPlayers(ctx, action.PollPlayers)
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(list)
+		if err != nil {
+			return err
+		}
+		*body = raw
+		return nil
 	case *nodesv1.Command_ListFiles:
 		serverID, path, err := parseFileTarget(action.ListFiles.GetServerId(), action.ListFiles.GetPath())
 		if err != nil {

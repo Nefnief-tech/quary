@@ -31,6 +31,7 @@ import (
 	"quarry.dev/quarry/panel/internal/logging"
 	"quarry.dev/quarry/panel/internal/marketplace"
 	"quarry.dev/quarry/panel/internal/nodes"
+	"quarry.dev/quarry/panel/internal/players"
 	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/servers"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
@@ -144,7 +145,12 @@ func cmdServe() {
 	catalog := runners.NewCatalog(rt.q, log)
 
 	// Server orchestration (create/power/events)
-	serverSvc := servers.NewService(rt.pool, rt.q, hub, chanMgr, catalog, log)
+	modrinth := marketplace.NewModrinth()
+	serverSvc := servers.NewService(rt.pool, rt.q, hub, chanMgr, catalog, modrinth, log)
+
+	// Keeps online-player snapshots fresh for watched servers.
+	playerSvc := players.NewService(rt.q, chanMgr, hub, log)
+	go playerSvc.Run(ctx)
 
 	// HTTP API + node services
 	nodeSvc := nodes.NewService(rt.pool, rt.q, rt.ca, rt.auditLog, log)
@@ -159,7 +165,7 @@ func cmdServe() {
 		Servers:  serverSvc,
 		Channels: chanMgr,
 		Catalog:  catalog,
-		Modrinth: marketplace.NewModrinth(),
+		Modrinth: modrinth,
 		Hub:      hub,
 		SealKey:  rt.sealKey,
 	})

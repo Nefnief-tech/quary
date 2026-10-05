@@ -14,7 +14,7 @@ import (
 const createNode = `-- name: CreateNode :one
 INSERT INTO nodes (id, name, description)
 VALUES ($1, $2, $3)
-RETURNING id, name, description, daemon_version, hostname, docker_version, os, arch, last_seen_at, created_at, updated_at
+RETURNING id, name, description, daemon_version, hostname, docker_version, os, arch, last_seen_at, created_at, updated_at, public_host
 `
 
 type CreateNodeParams struct {
@@ -38,6 +38,7 @@ func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) (Node, e
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PublicHost,
 	)
 	return i, err
 }
@@ -52,7 +53,7 @@ func (q *Queries) DeleteNode(ctx context.Context, id uuid.UUID) error {
 }
 
 const getNode = `-- name: GetNode :one
-SELECT id, name, description, daemon_version, hostname, docker_version, os, arch, last_seen_at, created_at, updated_at FROM nodes WHERE id = $1
+SELECT id, name, description, daemon_version, hostname, docker_version, os, arch, last_seen_at, created_at, updated_at, public_host FROM nodes WHERE id = $1
 `
 
 func (q *Queries) GetNode(ctx context.Context, id uuid.UUID) (Node, error) {
@@ -70,12 +71,13 @@ func (q *Queries) GetNode(ctx context.Context, id uuid.UUID) (Node, error) {
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PublicHost,
 	)
 	return i, err
 }
 
 const listNodes = `-- name: ListNodes :many
-SELECT id, name, description, daemon_version, hostname, docker_version, os, arch, last_seen_at, created_at, updated_at FROM nodes ORDER BY created_at
+SELECT id, name, description, daemon_version, hostname, docker_version, os, arch, last_seen_at, created_at, updated_at, public_host FROM nodes ORDER BY created_at
 `
 
 func (q *Queries) ListNodes(ctx context.Context) ([]Node, error) {
@@ -99,6 +101,7 @@ func (q *Queries) ListNodes(ctx context.Context) ([]Node, error) {
 			&i.LastSeenAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PublicHost,
 		); err != nil {
 			return nil, err
 		}
@@ -111,9 +114,9 @@ func (q *Queries) ListNodes(ctx context.Context) ([]Node, error) {
 }
 
 const pickNodeWithFreeAllocation = `-- name: PickNodeWithFreeAllocation :one
-SELECT n.id, n.name, n.description, n.daemon_version, n.hostname, n.docker_version, n.os, n.arch, n.last_seen_at, n.created_at, n.updated_at FROM nodes n
+SELECT n.id, n.name, n.description, n.daemon_version, n.hostname, n.docker_version, n.os, n.arch, n.last_seen_at, n.created_at, n.updated_at, n.public_host FROM nodes n
 JOIN allocations a ON a.node_id = n.id
-LEFT JOIN servers s ON s.allocation_id = a.id
+LEFT JOIN servers s ON s.allocation_id = a.id OR s.map_allocation_id = a.id
 WHERE s.id IS NULL AND n.last_seen_at > now() - interval '35 seconds'
 ORDER BY n.created_at
 LIMIT 1
@@ -134,6 +137,7 @@ func (q *Queries) PickNodeWithFreeAllocation(ctx context.Context) (Node, error) 
 		&i.LastSeenAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PublicHost,
 	)
 	return i, err
 }
@@ -146,6 +150,8 @@ UPDATE nodes SET
     docker_version = $4,
     os = $5,
     arch = $6,
+    -- An empty public_host keeps whatever was stored before.
+    public_host = COALESCE(NULLIF($7::text, ''), public_host),
     updated_at = now()
 WHERE id = $1
 `
@@ -157,6 +163,7 @@ type TouchNodeHeartbeatParams struct {
 	DockerVersion string    `json:"docker_version"`
 	Os            string    `json:"os"`
 	Arch          string    `json:"arch"`
+	PublicHost    string    `json:"public_host"`
 }
 
 func (q *Queries) TouchNodeHeartbeat(ctx context.Context, arg TouchNodeHeartbeatParams) error {
@@ -167,6 +174,7 @@ func (q *Queries) TouchNodeHeartbeat(ctx context.Context, arg TouchNodeHeartbeat
 		arg.DockerVersion,
 		arg.Os,
 		arg.Arch,
+		arg.PublicHost,
 	)
 	return err
 }

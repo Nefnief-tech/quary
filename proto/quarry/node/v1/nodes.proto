@@ -55,6 +55,10 @@ message DaemonInfo {
   string docker_version = 3;
   string os = 4;
   string arch = 5;
+  // Address game clients' browsers can reach for ports the daemon
+  // publishes (e.g. the map webserver). Defaults to hostname on the wire
+  // when unset; the panel stores it on the node record.
+  string public_host = 6;
 }
 
 message HeartbeatRequest {
@@ -101,7 +105,14 @@ message Command {
     WriteFile write_file = 9;
     DeleteFile delete_file = 10;
     InstallPlugin install_plugin = 11;
+    PollPlayers poll_players = 12;
   }
+}
+
+// PollPlayers asks the daemon to run `list` on the console and parse the
+// response. The result body is JSON: {"names":["…"],"online":n,"max":m}.
+message PollPlayers {
+  string server_id = 1;
 }
 
 // InstallPlugin downloads a marketplace jar into the server's content
@@ -136,6 +147,18 @@ message InstallServer {
   // Allocated address the server should bind inside the container.
   string bind_ip = 10;
   int32 bind_port = 11;
+  // Additional checksum-verified downloads (e.g. the BlueMap jar) placed
+  // relative to the server data directory at install time.
+  repeated ExtraFile extras = 12;
+}
+
+// ExtraFile is one auxiliary download installed alongside the server
+// artifact. filename is relative to the server data directory.
+message ExtraFile {
+  string url = 1;
+  string sha256 = 2;
+  string sha512 = 3;
+  string filename = 4;
 }
 
 message StartServer {
@@ -146,6 +169,10 @@ message StartServer {
   int32 cpu_percent = 5; // 100 = one core
   string bind_ip = 6;
   int32 bind_port = 7;
+  // Optional second binding for the embedded map webserver (BlueMap),
+  // which always listens on container port 8100. Zero = no map.
+  string map_bind_ip = 8;
+  int32 map_port = 9;
 }
 
 message StopServer {

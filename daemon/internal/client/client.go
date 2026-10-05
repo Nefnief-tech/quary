@@ -260,6 +260,7 @@ func (c *Client) info() *nodesv1.DaemonInfo {
 		Hostname:      host,
 		Os:            runtime.GOOS,
 		Arch:          runtime.GOARCH,
+		PublicHost:    c.cfg.PublicHost,
 	}
 }
 

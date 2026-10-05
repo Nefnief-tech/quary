@@ -25,6 +25,9 @@ type ServerSpec struct {
 	CPUPercent int // 100 = one full core
 	BindIP     string
 	BindPort   int
+	// MapPort publishes the container's map webserver port (8100) on this
+	// host port; 0 disables it.
+	MapPort int
 }
 
 // Stats is a one-shot resource snapshot.

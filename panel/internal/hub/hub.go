@@ -24,6 +24,7 @@ const (
 	EventStats   = "stats"
 	EventStatus  = "status"
 	EventInstall = "install"
+	EventPlayers = "players"
 
 	// scrollbackLines are replayed on console connect.
 	scrollbackLines = 300
@@ -38,6 +39,14 @@ type Event struct {
 	Status   string
 	Detail   string
 	Install  *nodesv1.InstallProgress
+	Players  *PlayerList
+}
+
+// PlayerList is the most recent `list` snapshot for a server.
+type PlayerList struct {
+	Names  []string `json:"names"`
+	Online int      `json:"online"`
+	Max    int      `json:"max"`
 }
 
 // StatsSnapshot is the pollable latest stats value.
@@ -60,6 +69,7 @@ type Hub struct {
 	subs       map[uuid.UUID]map[*subscription]struct{}
 	stats      map[uuid.UUID]*StatsSnapshot
 	scrollback map[uuid.UUID][]string
+	players    map[uuid.UUID]*PlayerList
 }
 
 func New() *Hub {
@@ -67,6 +77,7 @@ func New() *Hub {
 		subs:       map[uuid.UUID]map[*subscription]struct{}{},
 		stats:      map[uuid.UUID]*StatsSnapshot{},
 		scrollback: map[uuid.UUID][]string{},
+		players:    map[uuid.UUID]*PlayerList{},
 	}
 }
 
@@ -112,6 +123,12 @@ func (h *Hub) Publish(ev Event) {
 			h.scrollback[ev.ServerID] = lines
 			h.mu.Unlock()
 		}
+	case EventPlayers:
+		if ev.Players != nil {
+			h.mu.Lock()
+			h.players[ev.ServerID] = ev.Players
+			h.mu.Unlock()
+		}
 	}
 
 	h.mu.RLock()
@@ -142,6 +159,33 @@ func (h *Hub) Scrollback(serverID uuid.UUID) []string {
 	defer h.mu.RUnlock()
 	out := make([]string, len(h.scrollback[serverID]))
 	copy(out, h.scrollback[serverID])
+	return out
+}
+
+// LatestPlayers returns the most recent player list snapshot.
+func (h *Hub) LatestPlayers(serverID uuid.UUID) (*PlayerList, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	p, ok := h.players[serverID]
+	return p, ok
+}
+
+// SetPlayers stores a snapshot (used to clear the list on stop).
+func (h *Hub) SetPlayers(serverID uuid.UUID, p *PlayerList) {
+	h.Publish(Event{Type: EventPlayers, ServerID: serverID, Players: p})
+}
+
+// ActiveServers returns the servers that currently have subscribers (used
+// to decide which servers are worth polling for players).
+func (h *Hub) ActiveServers() []uuid.UUID {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]uuid.UUID, 0, len(h.subs))
+	for id, subs := range h.subs {
+		if len(subs) > 0 {
+			out = append(out, id)
+		}
+	}
 	return out
 }
 

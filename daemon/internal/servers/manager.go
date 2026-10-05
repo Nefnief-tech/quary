@@ -79,6 +79,8 @@ type process struct {
 
 	mu           sync.Mutex
 	expectedStop bool
+	// taps receive a copy of every console line (player list polling).
+	taps map[chan string]struct{}
 }
 
 func NewManager(cfg Config, rt runtime.ContainerRuntime, log *slog.Logger) (*Manager, error) {
@@ -151,6 +153,41 @@ func (m *Manager) Install(ctx context.Context, cmd *nodesv1.InstallServer, emit 
 		return err
 	}
 
+	// Auxiliary downloads (e.g. the BlueMap jar); checksum-verified like the
+	// main artifact.
+	for _, extra := range cmd.GetExtras() {
+		name := filepath.Base(extra.GetFilename())
+		if strings.TrimSpace(extra.GetFilename()) == "" || name == "." || name == "/" {
+			return fmt.Errorf("invalid extra filename")
+		}
+		dest, err := m.ServerDir(serverID, extra.GetFilename())
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return fmt.Errorf("create extra dir: %w", err)
+		}
+		emit.EmitInstallProgress(serverID, "download "+name, 0, "downloading")
+		if err := m.download(ctx, download{
+			URL:    extra.GetUrl(),
+			SHA256: extra.GetSha256(),
+			SHA512: extra.GetSha512(),
+			Dest:   dest,
+			Label:  name,
+		}, serverID, emit); err != nil {
+			return fmt.Errorf("install %s: %w", name, err)
+		}
+		// BlueMap needs Mojang's client assets to render textures; accept the
+		// download up front (the owner accepted Mojang's EULA at creation).
+		// Missing keys fall back to defaults in BlueMap's config loader.
+		switch filepath.Dir(extra.GetFilename()) {
+		case "plugins":
+			m.writeIfMissing(filepath.Join(dir, "plugins", "BlueMap", "core.conf"))
+		case "mods":
+			m.writeIfMissing(filepath.Join(dir, "config", "bluemap", "core.conf"))
+		}
+	}
+
 	// Minecraft EULA: accepted implicitly when the owner creates the server.
 	if err := os.WriteFile(filepath.Join(dir, "eula.txt"), []byte("# Accepted via Quarry panel on creation\neula=true\n"), 0o644); err != nil {
 		return fmt.Errorf("write eula.txt: %w", err)
@@ -167,6 +204,18 @@ func (m *Manager) Install(ctx context.Context, cmd *nodesv1.InstallServer, emit 
 
 	emit.EmitStatus(serverID, "offline", "install complete")
 	return nil
+}
+
+// writeIfMissing creates a file with a single HOCON line if it does not
+// exist yet (used for BlueMap's accept-download).
+func (m *Manager) writeIfMissing(path string) {
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, []byte("accept-download = true\n"), 0o644)
 }
 
 func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServer, dest string, serverID uuid.UUID, emit Emitter) error {
@@ -353,6 +402,7 @@ func (m *Manager) Start(ctx context.Context, cmd *nodesv1.StartServer, emit Emit
 		CPUPercent: int(cmd.GetCpuPercent()),
 		BindIP:     cmd.GetBindIp(),
 		BindPort:   int(cmd.GetBindPort()),
+		MapPort:    int(cmd.GetMapPort()),
 	}
 
 	emit.EmitStatus(serverID, "starting", "")
@@ -376,6 +426,7 @@ func (m *Manager) Start(ctx context.Context, cmd *nodesv1.StartServer, emit Emit
 func (m *Manager) watchConsole(serverID uuid.UUID, p *process) {
 	go func() {
 		for line := range p.console.Lines() {
+			feedTaps(p, line)
 			if e := m.currentEmitter(); e != nil {
 				e.EmitConsole(serverID, line)
 			}

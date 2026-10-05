@@ -21,6 +21,8 @@ export interface Server {
 	cpu_percent: number;
 	ip: string;
 	port: number;
+	/** Browser-reachable BlueMap webserver address; empty when no map. */
+	map_url?: string;
 	created_at: string;
 }
 

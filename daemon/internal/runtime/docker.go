@@ -81,6 +81,21 @@ func (d *Docker) CreateAndStart(ctx context.Context, spec ServerSpec, dataDir st
 		return nil, fmt.Errorf("parse bind ip: %w", err)
 	}
 
+	exposed := network.PortSet{portKey: {}}
+	bindings := network.PortMap{portKey: []network.PortBinding{
+		{HostIP: hostIP, HostPort: strconv.Itoa(spec.BindPort)},
+	}}
+	if spec.MapPort > 0 {
+		mapKey, err := network.ParsePort(fmt.Sprintf("%d/tcp", mapContainerPort))
+		if err != nil {
+			return nil, fmt.Errorf("parse map port: %w", err)
+		}
+		exposed[mapKey] = struct{}{}
+		bindings[mapKey] = []network.PortBinding{
+			{HostIP: hostIP, HostPort: strconv.Itoa(spec.MapPort)},
+		}
+	}
+
 	cfg := &container.Config{
 		Image: spec.Image,
 		Cmd:   spec.Launch,
@@ -94,7 +109,7 @@ func (d *Docker) CreateAndStart(ctx context.Context, spec ServerSpec, dataDir st
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		ExposedPorts: network.PortSet{portKey: {}},
+		ExposedPorts: exposed,
 	}
 	hostCfg := &container.HostConfig{
 		Binds: []string{dataDir + ":/data"},
@@ -109,9 +124,7 @@ func (d *Docker) CreateAndStart(ctx context.Context, spec ServerSpec, dataDir st
 			MemorySwap: int64(spec.MemoryMB) << 20, // no swap
 			NanoCPUs:   int64(spec.CPUPercent) * 1_000_000,
 		},
-		PortBindings: network.PortMap{portKey: []network.PortBinding{
-			{HostIP: hostIP, HostPort: strconv.Itoa(spec.BindPort)},
-		}},
+		PortBindings: bindings,
 	}
 
 	created, err := d.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
@@ -299,6 +312,10 @@ func (d *Docker) StatsOneShot(ctx context.Context, id uuid.UUID) (*Stats, error)
 func (d *Docker) DiskUsage(_ context.Context, dataDir string) (int64, error) {
 	return diskUsageLocal(dataDir)
 }
+
+// mapContainerPort is the port BlueMap's embedded webserver listens on
+// inside every server container.
+const mapContainerPort = 8100
 
 func normalizeBindIP(ip string) string {
 	if ip == "" {

@@ -1,7 +1,7 @@
 -- name: CreateServer :one
-INSERT INTO servers (id, name, owner_id, node_id, allocation_id, runner, mc_version,
+INSERT INTO servers (id, name, owner_id, node_id, allocation_id, map_allocation_id, runner, mc_version,
                      status, memory_mb, disk_mb, cpu_percent, config)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 RETURNING *;
 
 -- name: GetServer :one

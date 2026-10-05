@@ -37,6 +37,10 @@ type Config struct {
 	// the daemon's own effective UID so the bind-mounted server directories
 	// are writable inside and out. Default 1500 (the packaged daemon user).
 	ContainerUID int
+	// PublicHost is the address users' browsers can reach for ports the
+	// daemon publishes (the map webserver). Empty = fall back to the
+	// machine hostname on the wire.
+	PublicHost string
 }
 
 func Load() (Config, error) {
@@ -50,6 +54,7 @@ func Load() (Config, error) {
 		ServerName:        os.Getenv("QUARRY_TLS_SERVER_NAME"),
 		HeartbeatInterval: 10 * time.Second,
 		ContainerUID:      1500,
+		PublicHost:        os.Getenv("QUARRY_PUBLIC_HOST"),
 	}
 	if v := os.Getenv("QUARRY_CONTAINER_UID"); v != "" {
 		uid, err := strconv.Atoi(v)

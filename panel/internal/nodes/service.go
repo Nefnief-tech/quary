@@ -114,6 +114,7 @@ func (s *Service) Beat(ctx context.Context, nodeID uuid.UUID, info *nodesv1.Daem
 		DockerVersion: info.GetDockerVersion(),
 		Os:            info.GetOs(),
 		Arch:          info.GetArch(),
+		PublicHost:    info.GetPublicHost(),
 	})
 }
 

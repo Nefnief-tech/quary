@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -33,7 +34,10 @@ type serverResponse struct {
 	CPUPercent int32     `json:"cpu_percent"`
 	IP         string    `json:"ip"`
 	Port       int32     `json:"port"`
-	CreatedAt  time.Time `json:"created_at"`
+	// MapURL is the browser-reachable BlueMap webserver address; empty when
+	// the server has no preinstalled map.
+	MapURL    string    `json:"map_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverResponse {
@@ -45,6 +49,20 @@ func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverRespon
 	if alloc, err := s.q.GetAllocationForServer(ctx, sv.ID); err == nil {
 		out.IP = alloc.Ip
 		out.Port = alloc.Port
+	}
+	if sv.MapAllocationID != nil {
+		if mapAlloc, err := s.q.GetAllocation(ctx, *sv.MapAllocationID); err == nil {
+			host := ""
+			if node, err := s.q.GetNode(ctx, sv.NodeID); err == nil {
+				host = node.PublicHost
+				if host == "" {
+					host = node.Hostname
+				}
+			}
+			if host != "" {
+				out.MapURL = fmt.Sprintf("http://%s:%d", host, mapAlloc.Port)
+			}
+		}
 	}
 	return out
 }
@@ -269,9 +287,15 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 		return conn.WriteJSON(v)
 	}
 
-	// Replay scrollback so the console isn't blank.
+	// Replay scrollback so the console isn't blank, plus the latest player
+	// snapshot so the Players tab starts populated.
 	for _, line := range s.hub.Scrollback(serverID) {
 		if err := sendJSON(map[string]any{"type": "console", "line": line}); err != nil {
+			return
+		}
+	}
+	if players, ok := s.hub.LatestPlayers(serverID); ok {
+		if err := sendJSON(map[string]any{"type": "players", "players": players}); err != nil {
 			return
 		}
 	}
@@ -336,6 +360,8 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 			case hub.EventInstall:
 				frame = map[string]any{"type": "install", "step": ev.Install.GetStep(),
 					"percent": ev.Install.GetPercent(), "detail": ev.Install.GetDetail()}
+			case hub.EventPlayers:
+				frame = map[string]any{"type": "players", "players": ev.Players}
 			default:
 				continue
 			}

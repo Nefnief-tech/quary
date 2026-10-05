@@ -12,25 +12,26 @@ import (
 )
 
 const createServer = `-- name: CreateServer :one
-INSERT INTO servers (id, name, owner_id, node_id, allocation_id, runner, mc_version,
+INSERT INTO servers (id, name, owner_id, node_id, allocation_id, map_allocation_id, runner, mc_version,
                      status, memory_mb, disk_mb, cpu_percent, config)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at, map_allocation_id
 `
 
 type CreateServerParams struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	OwnerID      uuid.UUID `json:"owner_id"`
-	NodeID       uuid.UUID `json:"node_id"`
-	AllocationID uuid.UUID `json:"allocation_id"`
-	Runner       string    `json:"runner"`
-	McVersion    string    `json:"mc_version"`
-	Status       string    `json:"status"`
-	MemoryMb     int32     `json:"memory_mb"`
-	DiskMb       int32     `json:"disk_mb"`
-	CpuPercent   int32     `json:"cpu_percent"`
-	Config       []byte    `json:"config"`
+	ID              uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	OwnerID         uuid.UUID  `json:"owner_id"`
+	NodeID          uuid.UUID  `json:"node_id"`
+	AllocationID    uuid.UUID  `json:"allocation_id"`
+	MapAllocationID *uuid.UUID `json:"map_allocation_id"`
+	Runner          string     `json:"runner"`
+	McVersion       string     `json:"mc_version"`
+	Status          string     `json:"status"`
+	MemoryMb        int32      `json:"memory_mb"`
+	DiskMb          int32      `json:"disk_mb"`
+	CpuPercent      int32      `json:"cpu_percent"`
+	Config          []byte     `json:"config"`
 }
 
 func (q *Queries) CreateServer(ctx context.Context, arg CreateServerParams) (Server, error) {
@@ -40,6 +41,7 @@ func (q *Queries) CreateServer(ctx context.Context, arg CreateServerParams) (Ser
 		arg.OwnerID,
 		arg.NodeID,
 		arg.AllocationID,
+		arg.MapAllocationID,
 		arg.Runner,
 		arg.McVersion,
 		arg.Status,
@@ -64,6 +66,7 @@ func (q *Queries) CreateServer(ctx context.Context, arg CreateServerParams) (Ser
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MapAllocationID,
 	)
 	return i, err
 }
@@ -78,7 +81,7 @@ func (q *Queries) DeleteServer(ctx context.Context, id uuid.UUID) error {
 }
 
 const getServer = `-- name: GetServer :one
-SELECT id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at FROM servers WHERE id = $1
+SELECT id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at, map_allocation_id FROM servers WHERE id = $1
 `
 
 func (q *Queries) GetServer(ctx context.Context, id uuid.UUID) (Server, error) {
@@ -99,12 +102,13 @@ func (q *Queries) GetServer(ctx context.Context, id uuid.UUID) (Server, error) {
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MapAllocationID,
 	)
 	return i, err
 }
 
 const listServers = `-- name: ListServers :many
-SELECT id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at FROM servers ORDER BY created_at
+SELECT id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at, map_allocation_id FROM servers ORDER BY created_at
 `
 
 func (q *Queries) ListServers(ctx context.Context) ([]Server, error) {
@@ -131,6 +135,7 @@ func (q *Queries) ListServers(ctx context.Context) ([]Server, error) {
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MapAllocationID,
 		); err != nil {
 			return nil, err
 		}
@@ -143,7 +148,7 @@ func (q *Queries) ListServers(ctx context.Context) ([]Server, error) {
 }
 
 const listServersByOwner = `-- name: ListServersByOwner :many
-SELECT id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at FROM servers WHERE owner_id = $1 ORDER BY created_at
+SELECT id, name, owner_id, node_id, allocation_id, runner, mc_version, status, memory_mb, disk_mb, cpu_percent, config, created_at, updated_at, map_allocation_id FROM servers WHERE owner_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListServersByOwner(ctx context.Context, ownerID uuid.UUID) ([]Server, error) {
@@ -170,6 +175,7 @@ func (q *Queries) ListServersByOwner(ctx context.Context, ownerID uuid.UUID) ([]
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.MapAllocationID,
 		); err != nil {
 			return nil, err
 		}

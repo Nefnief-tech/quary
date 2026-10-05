@@ -6,7 +6,7 @@
 
 	let server = $state<Server | null>(null);
 	let error = $state('');
-	let tab = $state<'console' | 'files' | 'plugins' | 'settings'>('console');
+	let tab = $state<'console' | 'files' | 'players' | 'plugins' | 'map' | 'settings'>('console');
 
 	let consoleEl: HTMLDivElement | null = $state(null);
 	let inputLine = $state('');
@@ -41,6 +41,79 @@
 	let pluginNote = $state('');
 
 	const hasMarket = $derived(server?.runner === 'paper' || server?.runner === 'fabric');
+
+	// players state
+	let players = $state<{ names: string[]; online: number; max: number } | null>(null);
+	let bans = $state<{ id: string; name: string; ip: string; reason: string; created_at: string }[]>(
+		[]
+	);
+	let kickFor = $state('');
+	let banFor = $state('');
+	let banReason = $state('');
+	let banIpAddr = $state('');
+	let banIpReason = $state('');
+	let busyPlayer = $state('');
+	let playerNote = $state('');
+
+	async function loadBans() {
+		try {
+			bans = await api.get<typeof bans>(`/api/v1/servers/${id}/bans`);
+		} catch {
+			bans = [];
+		}
+	}
+
+	function openPlayers() {
+		tab = 'players';
+		loadBans();
+	}
+
+	async function playerAction(action: 'kick' | 'ban' | 'ban_ip' | 'op' | 'deop', name: string, ip = '') {
+		busyPlayer = action + (name || ip);
+		playerNote = '';
+		error = '';
+		try {
+			await api.post(`/api/v1/servers/${id}/players/action`, {
+				action,
+				name,
+				ip,
+				reason: action === 'ban' ? banReason : action === 'ban_ip' ? banIpReason : ''
+			});
+			playerNote =
+				action === 'op' ? `Opped ${name}.`
+				: action === 'deop' ? `Deopped ${name}.`
+				: action === 'kick' ? `Kicked ${name}.`
+				: action === 'ban' ? `Banned ${name}.`
+				: `Banned IP ${ip}.`;
+			banFor = '';
+			banReason = '';
+			if (action === 'ban' || action === 'ban_ip') await loadBans();
+		} catch (err) {
+			playerNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			busyPlayer = '';
+		}
+	}
+
+	async function unban(banId: string) {
+		playerNote = '';
+		try {
+			await api.del(`/api/v1/servers/${id}/bans/${banId}`);
+			await loadBans();
+		} catch (err) {
+			playerNote = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	function fullRender() {
+		if (!ws || ws.readyState !== WebSocket.OPEN) {
+			error = 'console is not connected, retrying automatically';
+			scheduleReconnect();
+			return;
+		}
+		ws.send('bluemap update');
+		playerNote = 'Map update started. Watch the console for progress.';
+	}
 
 	async function loadPlugins() {
 		if (!hasMarket) return;
@@ -239,6 +312,7 @@
 	onMount(async () => {
 		server = await api.get<Server>(`/api/v1/servers/${id}`);
 		loadFiles('');
+		players = await api.get<typeof players>(`/api/v1/servers/${id}/players`).catch(() => null);
 		// Flush the DOM so the console element exists, then create the
 		// terminal *before* opening the socket — deterministic ordering.
 		await tick();
@@ -338,6 +412,8 @@
 					statusDetail = frame.detail ?? '';
 				} else if (frame.type === 'stats' && frame.stats) {
 					stats = frame.stats;
+				} else if (frame.type === 'players' && frame.players) {
+					players = frame.players;
 				} else if (frame.type === 'install') {
 					statusDetail = `install: ${frame.step} ${Math.round(frame.percent ?? 0)}%`;
 				}
@@ -464,6 +540,14 @@
 		<div class="tabs">
 			<button class={`tab ${tab === 'console' ? 'tab-active' : ''}`} onclick={() => (tab = 'console')}>
 				Console
+				{#if players && players.online > 0}
+					<span class="ml-1.5 rounded-full bg-emerald-500/15 px-1.5 text-[10px] font-semibold text-emerald-300">
+						{players.online}
+					</span>
+				{/if}
+			</button>
+			<button class={`tab ${tab === 'players' ? 'tab-active' : ''}`} onclick={openPlayers}>
+				Players
 			</button>
 			<button class={`tab ${tab === 'files' ? 'tab-active' : ''}`} onclick={() => (tab = 'files')}>
 				Files
@@ -471,6 +555,11 @@
 			{#if hasMarket}
 				<button class={`tab ${tab === 'plugins' ? 'tab-active' : ''}`} onclick={openPlugins}>
 					Plugins
+				</button>
+			{/if}
+			{#if server.map_url}
+				<button class={`tab ${tab === 'map' ? 'tab-active' : ''}`} onclick={() => (tab = 'map')}>
+					Map
 				</button>
 			{/if}
 			<button class={`tab ${tab === 'settings' ? 'tab-active' : ''}`} onclick={openSettings}>
@@ -584,6 +673,188 @@
 				{:else}
 					<p class="text-sm text-zinc-500">Select a file to view or edit it.</p>
 				{/if}
+			</div>
+		</div>
+	{:else if tab === 'players'}
+		<div class="space-y-4">
+			{#if playerNote}
+				<p class="rounded-md border border-sky-400/20 bg-sky-400/5 px-3 py-2 text-sm text-sky-200">
+					{playerNote}
+				</p>
+			{/if}
+			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+				<!-- Online players -->
+				<div class="card p-5 lg:col-span-2">
+					<div class="mb-3 flex items-center justify-between">
+						<h3 class="text-sm font-medium text-zinc-300">Online</h3>
+						<span class="mono text-xs text-zinc-500">
+							{players ? `${players.online} / ${players.max || '?'}` : 'waiting for first poll'}
+						</span>
+					</div>
+					{#if server.status !== 'running'}
+						<p class="py-6 text-center text-sm text-zinc-500">
+							The server is {server.status}. Players appear here once it is running.
+						</p>
+					{:else if !players}
+						<p class="py-6 text-center text-sm text-zinc-500">Waiting for the next player poll…</p>
+					{:else if players.names.length === 0}
+						<p class="py-6 text-center text-sm text-zinc-500">Nobody is online right now.</p>
+					{:else}
+						<ul class="divide-y divide-zinc-800/50">
+							{#each players.names as name (name)}
+								<li class="py-1">
+									<div class="group flex items-center gap-3 rounded-md px-1 py-1.5">
+										<!-- skin head: browser-fetched from mc-heads.net, offline servers fall back to Steve -->
+										<img
+											src={`https://mc-heads.net/avatar/${name}/32`}
+											alt=""
+											loading="lazy"
+											referrerpolicy="no-referrer"
+											class="h-7 w-7 rounded-md border border-zinc-800 bg-zinc-900 [image-rendering:pixelated]"
+										/>
+										<span class="font-mono text-sm text-zinc-200">{name}</span>
+										<span class="ml-auto flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+											<button
+												class="rounded-md px-2 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
+												disabled={busyPlayer === 'kick' + name}
+												onclick={() => playerAction('kick', name)}
+												title="Kick from the server"
+											>
+												<i class="ph ph-boot"></i> Kick
+											</button>
+											<button
+												class="rounded-md px-2 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-amber-300"
+												disabled={busyPlayer === 'op' + name}
+												onclick={() => playerAction('op', name)}
+												title="Grant operator"
+											>
+												<i class="ph ph-shield-star"></i> Op
+											</button>
+											<button
+												class="rounded-md px-2 py-1 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-rose-300"
+												onclick={() => (banFor = banFor === name ? '' : name)}
+												title="Ban player"
+											>
+												<i class="ph ph-prohibit"></i> Ban
+											</button>
+										</span>
+									</div>
+									{#if banFor === name}
+										<form
+											class="mx-1 mb-2 flex items-center gap-2 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] px-3 py-2"
+											onsubmit={(e) => {
+												e.preventDefault();
+												playerAction('ban', name);
+											}}
+										>
+											<input
+												class="input flex-1 py-1.5 text-sm"
+												placeholder={`Reason for banning ${name} (optional)`}
+												bind:value={banReason}
+											/>
+											<button
+												type="submit"
+												disabled={busyPlayer === 'ban' + name}
+												class="btn btn-danger px-3 py-1.5 text-xs">Ban {name}</button
+											>
+											<button
+												type="button"
+												class="px-2 py-1.5 text-xs text-zinc-500 transition hover:text-zinc-300"
+												onclick={() => (banFor = '')}>Cancel</button
+											>
+										</form>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<p class="mt-3 border-t border-zinc-800/60 pt-3 text-xs text-zinc-600">
+						The list refreshes every 10 seconds while this page is open.
+					</p>
+				</div>
+
+				<!-- Bans -->
+				<div class="space-y-4">
+					<div class="card p-5">
+						<h3 class="mb-3 text-sm font-medium text-zinc-300">Ban an IP address</h3>
+						<form
+							class="flex items-center gap-2"
+							onsubmit={(e) => {
+								e.preventDefault();
+								playerAction('ban_ip', '', banIpAddr);
+							}}
+						>
+							<input
+								class="input flex-1 font-mono text-sm"
+								placeholder="203.0.113.7"
+								bind:value={banIpAddr}
+								required
+							/>
+							<input
+								class="input w-32 text-sm"
+								placeholder="reason"
+								bind:value={banIpReason}
+							/>
+							<button
+								type="submit"
+								disabled={busyPlayer === 'ban_ip' + banIpAddr}
+								class="btn btn-danger px-3 py-1.5 text-xs">Ban</button
+							>
+						</form>
+					</div>
+					<div class="card p-5">
+						<h3 class="mb-3 flex items-center justify-between text-sm font-medium text-zinc-300">
+							Bans
+							<span class="mono text-xs text-zinc-500">{bans.length}</span>
+						</h3>
+						<ul class="space-y-1">
+							{#each bans as b (b.id)}
+								<li class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-800/50">
+									<i class="ph {b.name ? 'ph-prohibit' : 'ph-globe-hemisphere-west'} text-zinc-600"></i>
+									<span class="truncate font-mono text-xs text-zinc-300">{b.name || b.ip}</span>
+									{#if b.reason}
+										<span class="truncate text-xs text-zinc-600" title={b.reason}>{b.reason}</span>
+									{/if}
+									<span class="mono ml-auto shrink-0 text-[10px] text-zinc-600">{b.created_at}</span>
+									<button
+										class="shrink-0 text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-emerald-300"
+										onclick={() => unban(b.id)}
+										title="Lift ban"
+									>
+										<i class="ph ph-lock-open text-sm"></i>
+									</button>
+								</li>
+							{:else}
+								<li class="px-2 py-1.5 text-xs text-zinc-600">No bans issued from the panel.</li>
+							{/each}
+						</ul>
+						<p class="mt-3 border-t border-zinc-800/60 pt-3 text-xs text-zinc-600">
+							Bans issued in-game do not appear here; the server's own ban list stays authoritative.
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	{:else if tab === 'map'}
+		<div class="space-y-3">
+			<div class="flex flex-wrap items-center gap-3">
+				<span class="chip font-mono">{server.map_url}</span>
+				<a href={server.map_url} target="_blank" rel="noreferrer" class="btn btn-secondary px-3 py-1.5 text-xs">
+					<i class="ph ph-arrow-square-out"></i> Open map in new tab
+				</a>
+				<button class="btn btn-secondary px-3 py-1.5 text-xs" onclick={fullRender}>
+					<i class="ph ph-cube-transparent"></i> Update map
+				</button>
+				<span class="text-xs text-zinc-600">
+					The map renders as the world is explored; "Update map" processes everything changed.
+				</span>
+			</div>
+			<div class="card overflow-hidden">
+				<iframe
+					src={server.map_url}
+					title="Server map"
+					class="h-[32rem] w-full border-0 bg-[#0b1120]"
+				></iframe>
 			</div>
 		</div>
 	{:else if tab === 'plugins'}

@@ -54,9 +54,11 @@ services:
       QUARRY_CONTAINER_UID: ${QUARRY_DOCKER_UID:-1000}
       QUARRY_CA_FILE: /ca/ca.crt
       QUARRY_ENROLLMENT_TOKEN: ${QUARRY_ENROLLMENT_TOKEN:-}
+      # Address browsers use to reach ports the daemon publishes (map UI).
+      QUARRY_PUBLIC_HOST: ${QUARRY_PUBLIC_HOST:-localhost}
       QUARRY_ENV: dev
     volumes:
-      - ../data/daemon:/state
+      - ${QUARRY_HOST_DAEMON_DIR:-../data/daemon}:/state
       # Same literal path inside the daemon and on the host (see
       # QUARRY_SERVERS_DIR) so sibling containers can bind-mount it.
       - ${QUARRY_HOST_SERVERS_DIR}:${QUARRY_HOST_SERVERS_DIR}

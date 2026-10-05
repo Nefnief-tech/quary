@@ -61,6 +61,12 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("GET /api/v1/servers/{id}/console", http.HandlerFunc(s.consoleWS))
 	mux.Handle("GET /api/v1/servers/{id}/stats", s.requirePerm("console.read", http.HandlerFunc(s.latestStats)))
 
+	// Players + moderation
+	mux.Handle("GET /api/v1/servers/{id}/players", s.requirePerm("console.read", http.HandlerFunc(s.playerSnapshot)))
+	mux.Handle("POST /api/v1/servers/{id}/players/action", s.requirePerm("console.write", http.HandlerFunc(s.playerAction)))
+	mux.Handle("GET /api/v1/servers/{id}/bans", s.requirePerm("console.read", http.HandlerFunc(s.listServerBans)))
+	mux.Handle("DELETE /api/v1/servers/{id}/bans/{banId}", s.requirePerm("console.write", http.HandlerFunc(s.deleteServerBan)))
+
 	// Server files
 	mux.Handle("GET /api/v1/servers/{id}/files", s.requirePerm("file.read", http.HandlerFunc(s.listServerFiles)))
 	mux.Handle("GET /api/v1/servers/{id}/files/content", s.requirePerm("file.read", http.HandlerFunc(s.readServerFile)))

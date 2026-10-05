@@ -54,6 +54,7 @@ type Node struct {
 	LastSeenAt    *time.Time `json:"last_seen_at"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	PublicHost    string     `json:"public_host"`
 }
 
 type NodeToken struct {
@@ -93,20 +94,31 @@ type RunnerVersion struct {
 }
 
 type Server struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	OwnerID      uuid.UUID `json:"owner_id"`
-	NodeID       uuid.UUID `json:"node_id"`
-	AllocationID uuid.UUID `json:"allocation_id"`
-	Runner       string    `json:"runner"`
-	McVersion    string    `json:"mc_version"`
-	Status       string    `json:"status"`
-	MemoryMb     int32     `json:"memory_mb"`
-	DiskMb       int32     `json:"disk_mb"`
-	CpuPercent   int32     `json:"cpu_percent"`
-	Config       []byte    `json:"config"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID              uuid.UUID  `json:"id"`
+	Name            string     `json:"name"`
+	OwnerID         uuid.UUID  `json:"owner_id"`
+	NodeID          uuid.UUID  `json:"node_id"`
+	AllocationID    uuid.UUID  `json:"allocation_id"`
+	Runner          string     `json:"runner"`
+	McVersion       string     `json:"mc_version"`
+	Status          string     `json:"status"`
+	MemoryMb        int32      `json:"memory_mb"`
+	DiskMb          int32      `json:"disk_mb"`
+	CpuPercent      int32      `json:"cpu_percent"`
+	Config          []byte     `json:"config"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	MapAllocationID *uuid.UUID `json:"map_allocation_id"`
+}
+
+type ServerBan struct {
+	ID        uuid.UUID  `json:"id"`
+	ServerID  uuid.UUID  `json:"server_id"`
+	Name      string     `json:"name"`
+	Ip        string     `json:"ip"`
+	Reason    string     `json:"reason"`
+	BannedBy  *uuid.UUID `json:"banned_by"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 type Session struct {

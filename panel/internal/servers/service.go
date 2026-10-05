@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path"
 	"sync"
 	"time"
 
@@ -19,12 +20,17 @@ import (
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/lifecycle"
+	"quarry.dev/quarry/panel/internal/marketplace"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/runners"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
 const defaultStopGraceSeconds = 30
+
+// mapProject is BlueMap's Modrinth slug; it is preinstalled on every
+// Paper/Fabric server the loader and Java version can run it on.
+const mapProject = "bluemap"
 
 var (
 	ErrNodeOffline   = nodes.ErrNodeOffline
@@ -44,6 +50,29 @@ type Config struct {
 		SHA256 string `json:"sha256,omitempty"`
 		SHA1   string `json:"sha1,omitempty"`
 	} `json:"artifact"`
+	// Map describes the preinstalled BlueMap webserver binding; nil when
+	// the runner or MC version cannot host one.
+	Map *MapConfig `json:"map,omitempty"`
+}
+
+// MapConfig is the second allocation the map webserver publishes on.
+type MapConfig struct {
+	IP      string `json:"ip"`
+	Port    int32  `json:"port"`
+	Version string `json:"version,omitempty"`
+}
+
+// mapRunner maps a runner to its Modrinth loader and content dir for the
+// preinstalled map; vanilla has no plugin loader.
+func mapRunner(runnerID string) (loader, contentDir string, ok bool) {
+	switch runnerID {
+	case "paper":
+		return "paper", "plugins", true
+	case "fabric":
+		return "fabric", "mods", true
+	default:
+		return "", "", false
+	}
 }
 
 type Service struct {
@@ -52,19 +81,21 @@ type Service struct {
 	hub      *hub.Hub
 	channels *nodes.ChannelManager
 	catalog  *runners.Catalog
+	modrinth *marketplace.Modrinth
 	log      *slog.Logger
 
 	mu              sync.Mutex
 	pendingRestarts map[uuid.UUID]bool
 }
 
-func NewService(pool *pgxpool.Pool, q *gen.Queries, hb *hub.Hub, channels *nodes.ChannelManager, catalog *runners.Catalog, log *slog.Logger) *Service {
+func NewService(pool *pgxpool.Pool, q *gen.Queries, hb *hub.Hub, channels *nodes.ChannelManager, catalog *runners.Catalog, modrinth *marketplace.Modrinth, log *slog.Logger) *Service {
 	return &Service{
 		pool:            pool,
 		q:               q,
 		hub:             hb,
 		channels:        channels,
 		catalog:         catalog,
+		modrinth:        modrinth,
 		log:             log,
 		pendingRestarts: map[uuid.UUID]bool{},
 	}
@@ -105,6 +136,24 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	}
 	java := runner.JavaVersion(req.MCVersion)
 
+	// BlueMap is preinstalled where it can run: plugin loaders on Java 21+.
+	// Resolution is best-effort: a missing BlueMap build for this MC version
+	// creates the server without a map instead of failing the create.
+	mapLoader, mapContentDir, mapOK := mapRunner(req.Runner)
+	if mapOK && java < 21 {
+		mapOK = false
+	}
+	var mapDL *marketplace.ResolvedDownload
+	if mapOK {
+		dl, err := s.modrinth.Resolve(ctx, mapProject, req.MCVersion, mapLoader)
+		if err != nil {
+			s.log.Warn("map resolution failed; creating server without a map",
+				"runner", req.Runner, "mc_version", req.MCVersion, "err", err)
+		} else {
+			mapDL = &dl
+		}
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return gen.Server{}, err
@@ -118,6 +167,25 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	}
 
 	serverID := uuid.New()
+
+	// The map needs its own port on the node. Without one, create without a
+	// map rather than failing the server. PickFreeAllocationExcluding is
+	// required because SKIP LOCKED does not skip rows this transaction
+	// itself already locked.
+	var mapAlloc *gen.Allocation
+	if mapDL != nil {
+		a, err := qtx.PickFreeAllocationExcluding(ctx, gen.PickFreeAllocationExcludingParams{
+			NodeID: req.NodeID, ID: alloc.ID,
+		})
+		if err != nil {
+			s.log.Warn("no free allocation for the map port; creating server without a map",
+				"server_id", serverID)
+			mapDL = nil
+		} else {
+			mapAlloc = &a
+		}
+	}
+
 	cfg := Config{
 		Image:    runners.ImageForJava(java),
 		Launch:   runner.Launch(int(req.MemoryMB)),
@@ -127,21 +195,30 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	cfg.Artifact.URL = artifact.URL
 	cfg.Artifact.SHA256 = artifact.SHA256
 	cfg.Artifact.SHA1 = artifact.SHA1
+	if mapDL != nil && mapAlloc != nil {
+		cfg.Map = &MapConfig{IP: mapAlloc.Ip, Port: mapAlloc.Port, Version: mapDL.Version}
+	}
 	cfgRaw, _ := json.Marshal(cfg)
 
+	var mapAllocID *uuid.UUID
+	if mapAlloc != nil {
+		id := mapAlloc.ID
+		mapAllocID = &id
+	}
 	server, err := qtx.CreateServer(ctx, gen.CreateServerParams{
-		ID:           serverID,
-		Name:         req.Name,
-		OwnerID:      ownerID,
-		NodeID:       req.NodeID,
-		AllocationID: alloc.ID,
-		Runner:       req.Runner,
-		McVersion:    req.MCVersion,
-		Status:       string(lifecycle.Installing),
-		MemoryMb:     req.MemoryMB,
-		DiskMb:       10240,
-		CpuPercent:   200,
-		Config:       cfgRaw,
+		ID:              serverID,
+		Name:            req.Name,
+		OwnerID:         ownerID,
+		NodeID:          req.NodeID,
+		AllocationID:    alloc.ID,
+		MapAllocationID: mapAllocID,
+		Runner:          req.Runner,
+		McVersion:       req.MCVersion,
+		Status:          string(lifecycle.Installing),
+		MemoryMb:        req.MemoryMB,
+		DiskMb:          10240,
+		CpuPercent:      200,
+		Config:          cfgRaw,
 	})
 	if err != nil {
 		return gen.Server{}, err
@@ -154,20 +231,28 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	go func() {
 		bg, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 		defer cancel()
+		install := &nodesv1.InstallServer{
+			ServerId:       serverID.String(),
+			Runner:         req.Runner,
+			McVersion:      req.MCVersion,
+			ArtifactUrl:    artifact.URL,
+			ArtifactSha256: artifact.SHA256,
+			ArtifactName:   artifact.Name,
+			Image:          cfg.Image,
+			Launch:         cfg.Launch,
+			MemoryMb:       req.MemoryMB,
+			BindIp:         cfg.BindIP,
+			BindPort:       cfg.BindPort,
+		}
+		if mapDL != nil {
+			install.Extras = append(install.Extras, &nodesv1.ExtraFile{
+				Url:      mapDL.URL,
+				Sha512:   mapDL.SHA512,
+				Filename: path.Join(mapContentDir, mapDL.Filename),
+			})
+		}
 		result, err := s.channels.Send(bg, req.NodeID, &nodesv1.Command{
-			Action: &nodesv1.Command_InstallServer{InstallServer: &nodesv1.InstallServer{
-				ServerId:       serverID.String(),
-				Runner:         req.Runner,
-				McVersion:      req.MCVersion,
-				ArtifactUrl:    artifact.URL,
-				ArtifactSha256: artifact.SHA256,
-				ArtifactName:   artifact.Name,
-				Image:          cfg.Image,
-				Launch:         cfg.Launch,
-				MemoryMb:       req.MemoryMB,
-				BindIp:         cfg.BindIP,
-				BindPort:       cfg.BindPort,
-			}},
+			Action: &nodesv1.Command_InstallServer{InstallServer: install},
 		})
 		if err != nil || !result.GetOk() {
 			var detail string
@@ -245,16 +330,21 @@ func (s *Service) Power(ctx context.Context, server gen.Server, action lifecycle
 func (s *Service) startCommand(server gen.Server) *nodesv1.Command {
 	var cfg Config
 	_ = json.Unmarshal(server.Config, &cfg)
+	start := &nodesv1.StartServer{
+		ServerId:   server.ID.String(),
+		Image:      cfg.Image,
+		Launch:     cfg.Launch,
+		MemoryMb:   server.MemoryMb,
+		CpuPercent: server.CpuPercent,
+		BindIp:     cfg.BindIP,
+		BindPort:   cfg.BindPort,
+	}
+	if cfg.Map != nil {
+		start.MapBindIp = cfg.Map.IP
+		start.MapPort = cfg.Map.Port
+	}
 	return &nodesv1.Command{
-		Action: &nodesv1.Command_StartServer{StartServer: &nodesv1.StartServer{
-			ServerId:   server.ID.String(),
-			Image:      cfg.Image,
-			Launch:     cfg.Launch,
-			MemoryMb:   server.MemoryMb,
-			CpuPercent: server.CpuPercent,
-			BindIp:     cfg.BindIP,
-			BindPort:   cfg.BindPort,
-		}},
+		Action: &nodesv1.Command_StartServer{StartServer: start},
 	}
 }
 
