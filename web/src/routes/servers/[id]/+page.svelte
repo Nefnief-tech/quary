@@ -5,7 +5,7 @@
 
 	let server = $state<Server | null>(null);
 	let error = $state('');
-	let tab = $state<'console' | 'files'>('console');
+	let tab = $state<'console' | 'files' | 'plugins'>('console');
 
 	let consoleEl: HTMLDivElement | null = $state(null);
 	let inputLine = $state('');
@@ -19,6 +19,73 @@
 	let filePath = $state('');
 	let fileContent = $state('');
 	let fileEditing = $state('');
+
+	// plugins state
+	let plugins = $state<{ name: string; size: number }[]>([]);
+	let pluginQuery = $state('');
+	let pluginResults = $state<
+		{ project_id: string; title: string; author: string; description: string; downloads: number }[]
+	>([]);
+	let pluginSearchBusy = $state(false);
+	let pluginSearchDone = $state(false);
+	let installingId = $state('');
+	let pluginNote = $state('');
+
+	const hasMarket = $derived(server?.runner === 'paper' || server?.runner === 'fabric');
+
+	async function loadPlugins() {
+		if (!hasMarket) return;
+		try {
+			plugins = await api.get<typeof plugins>(`/api/v1/servers/${id}/plugins`);
+		} catch {
+			plugins = [];
+		}
+	}
+
+	async function searchPlugins(e?: SubmitEvent) {
+		e?.preventDefault();
+		pluginSearchBusy = true;
+		pluginNote = '';
+		try {
+			const res = await api.get<{
+				hits: typeof pluginResults;
+			}>(`/api/v1/servers/${id}/plugins/search?q=${encodeURIComponent(pluginQuery)}`);
+			pluginResults = res.hits;
+			pluginSearchDone = true;
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			pluginSearchBusy = false;
+		}
+	}
+
+	async function installPlugin(projectId: string) {
+		installingId = projectId;
+		pluginNote = '';
+		try {
+			const res = await api.post<{ filename: string; hint: string }>(
+				`/api/v1/servers/${id}/plugins/install`,
+				{ project_id: projectId }
+			);
+			pluginNote = `Installed ${res.filename}. ${res.hint}.`;
+			await loadPlugins();
+		} catch (err) {
+			pluginNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			installingId = '';
+		}
+	}
+
+	async function deletePlugin(name: string) {
+		if (!confirm(`Remove ${name}?`)) return;
+		await api.del(`/api/v1/servers/${id}/plugins?name=${encodeURIComponent(name)}`);
+		await loadPlugins();
+	}
+
+	function openPlugins() {
+		tab = 'plugins';
+		loadPlugins();
+	}
 
 	const id = $derived(page.params.id ?? '');
 	let ws: WebSocket | null = null;
@@ -321,6 +388,14 @@
 		>
 			Files
 		</button>
+		{#if hasMarket}
+			<button
+				class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'plugins' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+				onclick={openPlugins}
+			>
+				Plugins
+			</button>
+		{/if}
 		{#if tab === 'console'}
 			<span class="ml-auto flex items-center gap-2 text-xs text-slate-500">
 				<span
@@ -372,7 +447,7 @@
 				</button>
 			</form>
 		</div>
-	{:else}
+	{:else if tab === 'files'}
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
 				<div class="mb-2 flex items-center gap-2 text-sm">
@@ -435,5 +510,76 @@
 				{/if}
 			</div>
 		</div>
+	{:else}
+		<div class="space-y-6">
+			<form onsubmit={searchPlugins} class="flex gap-2">
+				<input
+					class="flex-1 rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
+					placeholder="Search Modrinth for {server.mc_version} plugins…"
+					bind:value={pluginQuery}
+				/>
+				<button
+					type="submit"
+					disabled={pluginSearchBusy}
+					class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+				>
+					{pluginSearchBusy ? '…' : 'Search'}
+				</button>
+			</form>
+
+			{#if pluginNote}
+				<p class="rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
+					{pluginNote}
+				</p>
+			{/if}
+
+			{#if pluginSearchDone}
+				<div class="rounded-xl border border-slate-800 bg-slate-900/70">
+					{#each pluginResults as hit (hit.project_id)}
+						<div class="flex items-center gap-3 border-b border-slate-800/60 p-4 last:border-0">
+							<div class="min-w-0 flex-1">
+								<p class="truncate font-medium text-slate-100">{hit.title}</p>
+								<p class="truncate text-xs text-slate-500">
+									{hit.author} · {hit.downloads.toLocaleString()} downloads — {hit.description}
+								</p>
+							</div>
+							<button
+								class="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+								disabled={installingId === hit.project_id}
+								onclick={() => installPlugin(hit.project_id)}
+							>
+								{installingId === hit.project_id ? 'Installing…' : 'Install'}
+							</button>
+						</div>
+					{:else}
+						<p class="p-4 text-sm text-slate-500">No results.</p>
+					{/each}
+				</div>
+			{/if}
+
+			<div>
+				<h3 class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">
+					Installed ({plugins.length})
+				</h3>
+				<div class="rounded-xl border border-slate-800 bg-slate-900/70 font-mono text-sm">
+					{#each plugins as p (p.name)}
+						<div class="group flex items-center gap-3 border-b border-slate-800/60 px-4 py-2.5 last:border-0">
+							<span class="text-slate-200">{p.name}</span>
+							<span class="ml-auto text-xs text-slate-600">{p.size} B</span>
+							<button
+								class="text-xs text-rose-400/70 transition hover:text-rose-300"
+								onclick={() => deletePlugin(p.name)}>remove</button
+							>
+						</div>
+					{:else}
+						<p class="px-4 py-3 text-slate-500">
+							Nothing installed yet. Search above — plugins land in the server's plugins directory;
+							restart the server to load them.
+						</p>
+					{/each}
+				</div>
+			</div>
+		</div>
 	{/if}
 {/if}
+

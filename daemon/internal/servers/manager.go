@@ -6,6 +6,7 @@ package servers
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -169,11 +170,29 @@ func (m *Manager) Install(ctx context.Context, cmd *nodesv1.InstallServer, emit 
 }
 
 func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServer, dest string, serverID uuid.UUID, emit Emitter) error {
-	url := cmd.GetArtifactUrl()
-	if err := m.guard.Check(ctx, url); err != nil {
+	return m.download(ctx, download{
+		URL:    cmd.GetArtifactUrl(),
+		SHA256: cmd.GetArtifactSha256(),
+		Dest:   dest,
+	}, serverID, emit)
+}
+
+// download is a downloadSpec holds one verified-download request.
+type download struct {
+	URL    string
+	SHA256 string
+	SHA512 string
+	Dest   string
+	Label  string // progress label, e.g. "download" or the plugin name
+}
+
+// download fetches url through the SSRF-guarded client, verifies whichever
+// checksum the source publishes, and atomically lands the file at dest.
+func (m *Manager) download(ctx context.Context, d download, serverID uuid.UUID, emit Emitter) error {
+	if err := m.guard.Check(ctx, d.URL); err != nil {
 		return fmt.Errorf("artifact url rejected: %w", err)
 	}
-	req, err := httpNewRequest(ctx, url)
+	req, err := httpNewRequest(ctx, d.URL)
 	if err != nil {
 		return err
 	}
@@ -187,7 +206,7 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 		return fmt.Errorf("download artifact: status %d", resp.StatusCode)
 	}
 
-	tmp := dest + ".download"
+	tmp := d.Dest + ".download"
 	out, err := os.Create(tmp)
 	if err != nil {
 		return fmt.Errorf("write artifact: %w", err)
@@ -195,14 +214,20 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 	defer func() { _ = os.Remove(tmp) }()
 
 	hash256 := sha256.New()
+	hash512 := sha512.New()
+	label := d.Label
+	if label == "" {
+		label = "download"
+	}
 	prog := &progressWriter{
 		total:    resp.ContentLength,
 		serverID: serverID,
 		emit:     emit,
 		last:     time.Now(),
+		label:    label,
 	}
-	written, err := prog.copyTo(io.MultiWriter(out, hash256), resp.Body)
-	if err != nil && !errors.Is(err, io.EOF) {
+	written, err := prog.copyTo(io.MultiWriter(out, hash256, hash512), resp.Body)
+	if err != nil {
 		_ = out.Close()
 		return fmt.Errorf("download artifact: %w", err)
 	}
@@ -211,20 +236,52 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 		return err
 	}
 
-	// Verify when the upstream publishes a SHA-256 (Paper, Fabric). Vanilla
-	// artifacts carry only upstream SHA-1 values; for those we rely on TLS
-	// to the pinned Mojang host and record the upstream digest for
-	// provenance in the server config instead of re-hashing here.
-	if want := strings.TrimSpace(cmd.GetArtifactSha256()); want != "" {
+	// Verify whichever checksum the source publishes. Vanilla artifacts
+	// carry only upstream SHA-1 values; for those we rely on TLS to the
+	// pinned Mojang host and record the upstream digest for provenance in
+	// the server config instead of re-hashing here.
+	if want := strings.TrimSpace(d.SHA256); want != "" {
 		if got := hex.EncodeToString(hash256.Sum(nil)); got != strings.ToLower(want) {
 			return fmt.Errorf("artifact sha256 mismatch (got %s)", got)
 		}
 	}
+	if want := strings.TrimSpace(d.SHA512); want != "" {
+		if got := hex.EncodeToString(hash512.Sum(nil)); got != strings.ToLower(want) {
+			return fmt.Errorf("artifact sha512 mismatch (got %s)", got)
+		}
+	}
 	emit.EmitInstallProgress(serverID, "verify", 100, "checksum ok")
-	if err := os.Rename(tmp, dest); err != nil {
+	if err := os.Rename(tmp, d.Dest); err != nil {
 		return err
 	}
 	return nil
+}
+
+// InstallPlugin downloads a marketplace jar into the server's content
+// directory. The panel supplies the destination path relative to the server
+// data dir ("plugins/…" or "mods/…"); path sanitization confines it there.
+func (m *Manager) InstallPlugin(ctx context.Context, cmd *nodesv1.InstallPlugin, emit Emitter) error {
+	serverID, err := uuid.Parse(cmd.GetServerId())
+	if err != nil {
+		return fmt.Errorf("invalid server id: %w", err)
+	}
+	if strings.TrimSpace(cmd.GetFilename()) == "" {
+		return fmt.Errorf("invalid plugin filename")
+	}
+	dest, err := m.ServerDir(serverID, cmd.GetFilename())
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return fmt.Errorf("create content dir: %w", err)
+	}
+	return m.download(ctx, download{
+		URL:    cmd.GetUrl(),
+		SHA256: cmd.GetSha256(),
+		SHA512: cmd.GetSha512(),
+		Dest:   dest,
+		Label:  "plugin " + filepath.Base(cmd.GetFilename()),
+	}, serverID, emit)
 }
 
 type progressWriter struct {
@@ -232,6 +289,7 @@ type progressWriter struct {
 	serverID uuid.UUID
 	emit     Emitter
 	last     time.Time
+	label    string
 }
 
 // copyTo pumps bytes into w, emitting periodic progress events. It returns
@@ -252,7 +310,7 @@ func (p *progressWriter) copyTo(w io.Writer, r io.Reader) (int64, error) {
 				if p.total > 0 {
 					pct = float64(done) / float64(p.total) * 100
 				}
-				p.emit.EmitInstallProgress(p.serverID, "download", pct,
+				p.emit.EmitInstallProgress(p.serverID, p.label, pct,
 					fmt.Sprintf("%d/%d bytes", done, p.total))
 			}
 		}

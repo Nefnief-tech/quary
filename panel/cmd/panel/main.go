@@ -29,6 +29,7 @@ import (
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/logging"
+	"quarry.dev/quarry/panel/internal/marketplace"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/servers"
@@ -158,6 +159,7 @@ func cmdServe() {
 		Servers:  serverSvc,
 		Channels: chanMgr,
 		Catalog:  catalog,
+		Modrinth: marketplace.NewModrinth(),
 		Hub:      hub,
 		SealKey:  rt.sealKey,
 	})

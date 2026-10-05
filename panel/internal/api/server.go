@@ -17,6 +17,7 @@ import (
 	"quarry.dev/quarry/panel/internal/config"
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/hub"
+	"quarry.dev/quarry/panel/internal/marketplace"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/servers"
@@ -35,6 +36,7 @@ type Server struct {
 	serverSvc *servers.Service
 	channels  *nodes.ChannelManager
 	catalog   *runners.Catalog
+	modrinth  *marketplace.Modrinth
 	hub       *hub.Hub
 	sealKey   []byte
 	limiter   *auth.LoginLimiter
@@ -52,6 +54,7 @@ type Deps struct {
 	Servers  *servers.Service
 	Channels *nodes.ChannelManager
 	Catalog  *runners.Catalog
+	Modrinth *marketplace.Modrinth
 	Hub      *hub.Hub
 	SealKey  []byte
 }
@@ -69,6 +72,7 @@ func New(d Deps) *Server {
 		serverSvc: d.Servers,
 		channels:  d.Channels,
 		catalog:   d.Catalog,
+		modrinth:  d.Modrinth,
 		hub:       d.Hub,
 		sealKey:   d.SealKey,
 		limiter:   auth.NewLoginLimiter(15*time.Second, 5),

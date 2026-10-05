@@ -65,5 +65,11 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("PUT /api/v1/servers/{id}/files/content", s.requirePerm("file.write", http.HandlerFunc(s.writeServerFile)))
 	mux.Handle("DELETE /api/v1/servers/{id}/files", s.requirePerm("file.write", http.HandlerFunc(s.deleteServerFile)))
 
+	// Plugins (marketplace)
+	mux.Handle("GET /api/v1/servers/{id}/plugins", s.requirePerm("plugin.install", http.HandlerFunc(s.listServerPlugins)))
+	mux.Handle("DELETE /api/v1/servers/{id}/plugins", s.requirePerm("plugin.install", http.HandlerFunc(s.deleteServerPlugin)))
+	mux.Handle("GET /api/v1/servers/{id}/plugins/search", s.requirePerm("plugin.install", http.HandlerFunc(s.searchPlugins)))
+	mux.Handle("POST /api/v1/servers/{id}/plugins/install", s.requirePerm("plugin.install", http.HandlerFunc(s.installPlugin)))
+
 	return s.recoverPanics(s.requestLog(s.authenticate(mux)))
 }

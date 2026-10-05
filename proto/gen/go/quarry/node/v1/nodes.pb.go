@@ -487,6 +487,7 @@ type Command struct {
 	//	*Command_ReadFile
 	//	*Command_WriteFile
 	//	*Command_DeleteFile
+	//	*Command_InstallPlugin
 	Action        isCommand_Action `protobuf_oneof:"action"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -617,6 +618,15 @@ func (x *Command) GetDeleteFile() *DeleteFile {
 	return nil
 }
 
+func (x *Command) GetInstallPlugin() *InstallPlugin {
+	if x != nil {
+		if x, ok := x.Action.(*Command_InstallPlugin); ok {
+			return x.InstallPlugin
+		}
+	}
+	return nil
+}
+
 type isCommand_Action interface {
 	isCommand_Action()
 }
@@ -657,6 +667,10 @@ type Command_DeleteFile struct {
 	DeleteFile *DeleteFile `protobuf:"bytes,10,opt,name=delete_file,json=deleteFile,proto3,oneof"`
 }
 
+type Command_InstallPlugin struct {
+	InstallPlugin *InstallPlugin `protobuf:"bytes,11,opt,name=install_plugin,json=installPlugin,proto3,oneof"`
+}
+
 func (*Command_InstallServer) isCommand_Action() {}
 
 func (*Command_StartServer) isCommand_Action() {}
@@ -674,6 +688,91 @@ func (*Command_ReadFile) isCommand_Action() {}
 func (*Command_WriteFile) isCommand_Action() {}
 
 func (*Command_DeleteFile) isCommand_Action() {}
+
+func (*Command_InstallPlugin) isCommand_Action() {}
+
+// InstallPlugin downloads a marketplace jar into the server's content
+// directory (plugins/ or mods/). The checksum published by the marketplace
+// is verified before the file lands.
+type InstallPlugin struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	// Marketplace download URL; the daemon rejects private addresses.
+	Url string `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	// SHA-256 or SHA-512 hex checksum, whichever the source publishes.
+	Sha256 string `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	Sha512 string `protobuf:"bytes,4,opt,name=sha512,proto3" json:"sha512,omitempty"`
+	// Path relative to the server data directory, including the content dir
+	// prefix the panel derives from the runner ("plugins/…" or "mods/…").
+	Filename      string `protobuf:"bytes,5,opt,name=filename,proto3" json:"filename,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstallPlugin) Reset() {
+	*x = InstallPlugin{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstallPlugin) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstallPlugin) ProtoMessage() {}
+
+func (x *InstallPlugin) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstallPlugin.ProtoReflect.Descriptor instead.
+func (*InstallPlugin) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *InstallPlugin) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *InstallPlugin) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *InstallPlugin) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *InstallPlugin) GetSha512() string {
+	if x != nil {
+		return x.Sha512
+	}
+	return ""
+}
+
+func (x *InstallPlugin) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
 
 type InstallServer struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
@@ -699,7 +798,7 @@ type InstallServer struct {
 
 func (x *InstallServer) Reset() {
 	*x = InstallServer{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -711,7 +810,7 @@ func (x *InstallServer) String() string {
 func (*InstallServer) ProtoMessage() {}
 
 func (x *InstallServer) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -724,7 +823,7 @@ func (x *InstallServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallServer.ProtoReflect.Descriptor instead.
 func (*InstallServer) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{8}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *InstallServer) GetServerId() string {
@@ -819,7 +918,7 @@ type StartServer struct {
 
 func (x *StartServer) Reset() {
 	*x = StartServer{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[9]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +930,7 @@ func (x *StartServer) String() string {
 func (*StartServer) ProtoMessage() {}
 
 func (x *StartServer) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[9]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +943,7 @@ func (x *StartServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartServer.ProtoReflect.Descriptor instead.
 func (*StartServer) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{9}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *StartServer) GetServerId() string {
@@ -907,7 +1006,7 @@ type StopServer struct {
 
 func (x *StopServer) Reset() {
 	*x = StopServer{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[10]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -919,7 +1018,7 @@ func (x *StopServer) String() string {
 func (*StopServer) ProtoMessage() {}
 
 func (x *StopServer) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[10]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -932,7 +1031,7 @@ func (x *StopServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServer.ProtoReflect.Descriptor instead.
 func (*StopServer) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{10}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StopServer) GetServerId() string {
@@ -958,7 +1057,7 @@ type KillServer struct {
 
 func (x *KillServer) Reset() {
 	*x = KillServer{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[11]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -970,7 +1069,7 @@ func (x *KillServer) String() string {
 func (*KillServer) ProtoMessage() {}
 
 func (x *KillServer) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[11]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -983,7 +1082,7 @@ func (x *KillServer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillServer.ProtoReflect.Descriptor instead.
 func (*KillServer) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{11}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *KillServer) GetServerId() string {
@@ -1003,7 +1102,7 @@ type SendCommand struct {
 
 func (x *SendCommand) Reset() {
 	*x = SendCommand{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[12]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1015,7 +1114,7 @@ func (x *SendCommand) String() string {
 func (*SendCommand) ProtoMessage() {}
 
 func (x *SendCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[12]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1028,7 +1127,7 @@ func (x *SendCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendCommand.ProtoReflect.Descriptor instead.
 func (*SendCommand) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{12}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SendCommand) GetServerId() string {
@@ -1056,7 +1155,7 @@ type ListFiles struct {
 
 func (x *ListFiles) Reset() {
 	*x = ListFiles{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[13]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1068,7 +1167,7 @@ func (x *ListFiles) String() string {
 func (*ListFiles) ProtoMessage() {}
 
 func (x *ListFiles) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[13]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1081,7 +1180,7 @@ func (x *ListFiles) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFiles.ProtoReflect.Descriptor instead.
 func (*ListFiles) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{13}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListFiles) GetServerId() string {
@@ -1110,7 +1209,7 @@ type ReadFile struct {
 
 func (x *ReadFile) Reset() {
 	*x = ReadFile{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[14]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1122,7 +1221,7 @@ func (x *ReadFile) String() string {
 func (*ReadFile) ProtoMessage() {}
 
 func (x *ReadFile) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[14]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1135,7 +1234,7 @@ func (x *ReadFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadFile.ProtoReflect.Descriptor instead.
 func (*ReadFile) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{14}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ReadFile) GetServerId() string {
@@ -1171,7 +1270,7 @@ type WriteFile struct {
 
 func (x *WriteFile) Reset() {
 	*x = WriteFile{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[15]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1183,7 +1282,7 @@ func (x *WriteFile) String() string {
 func (*WriteFile) ProtoMessage() {}
 
 func (x *WriteFile) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[15]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1196,7 +1295,7 @@ func (x *WriteFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFile.ProtoReflect.Descriptor instead.
 func (*WriteFile) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{15}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *WriteFile) GetServerId() string {
@@ -1238,7 +1337,7 @@ type DeleteFile struct {
 
 func (x *DeleteFile) Reset() {
 	*x = DeleteFile{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[16]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1250,7 +1349,7 @@ func (x *DeleteFile) String() string {
 func (*DeleteFile) ProtoMessage() {}
 
 func (x *DeleteFile) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[16]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1263,7 +1362,7 @@ func (x *DeleteFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFile.ProtoReflect.Descriptor instead.
 func (*DeleteFile) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{16}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DeleteFile) GetServerId() string {
@@ -1302,7 +1401,7 @@ type CommandResult struct {
 
 func (x *CommandResult) Reset() {
 	*x = CommandResult{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[17]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1314,7 +1413,7 @@ func (x *CommandResult) String() string {
 func (*CommandResult) ProtoMessage() {}
 
 func (x *CommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[17]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1327,7 +1426,7 @@ func (x *CommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
 func (*CommandResult) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{17}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CommandResult) GetCorrelationId() string {
@@ -1374,7 +1473,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[18]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1386,7 +1485,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[18]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1399,7 +1498,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{18}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Event) GetServerId() string {
@@ -1493,7 +1592,7 @@ type ConsoleLine struct {
 
 func (x *ConsoleLine) Reset() {
 	*x = ConsoleLine{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[19]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1505,7 +1604,7 @@ func (x *ConsoleLine) String() string {
 func (*ConsoleLine) ProtoMessage() {}
 
 func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[19]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1518,7 +1617,7 @@ func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleLine.ProtoReflect.Descriptor instead.
 func (*ConsoleLine) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{19}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ConsoleLine) GetAtUnixMilli() int64 {
@@ -1556,7 +1655,7 @@ type ServerStats struct {
 
 func (x *ServerStats) Reset() {
 	*x = ServerStats{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[20]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1568,7 +1667,7 @@ func (x *ServerStats) String() string {
 func (*ServerStats) ProtoMessage() {}
 
 func (x *ServerStats) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[20]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1581,7 +1680,7 @@ func (x *ServerStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerStats.ProtoReflect.Descriptor instead.
 func (*ServerStats) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{20}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ServerStats) GetCpuPercent() float64 {
@@ -1636,7 +1735,7 @@ type StatusChange struct {
 
 func (x *StatusChange) Reset() {
 	*x = StatusChange{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[21]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1648,7 +1747,7 @@ func (x *StatusChange) String() string {
 func (*StatusChange) ProtoMessage() {}
 
 func (x *StatusChange) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[21]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1661,7 +1760,7 @@ func (x *StatusChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusChange.ProtoReflect.Descriptor instead.
 func (*StatusChange) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{21}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *StatusChange) GetStatus() string {
@@ -1689,7 +1788,7 @@ type InstallProgress struct {
 
 func (x *InstallProgress) Reset() {
 	*x = InstallProgress{}
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[22]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1701,7 +1800,7 @@ func (x *InstallProgress) String() string {
 func (*InstallProgress) ProtoMessage() {}
 
 func (x *InstallProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_quarry_node_v1_nodes_proto_msgTypes[22]
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1714,7 +1813,7 @@ func (x *InstallProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstallProgress.ProtoReflect.Descriptor instead.
 func (*InstallProgress) Descriptor() ([]byte, []int) {
-	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{22}
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *InstallProgress) GetStep() string {
@@ -1770,7 +1869,7 @@ const file_quarry_node_v1_nodes_proto_rawDesc = "" +
 	"\x0eChannelRequest\x12-\n" +
 	"\x05event\x18\x01 \x01(\v2\x15.quarry.node.v1.EventH\x00R\x05event\x127\n" +
 	"\x06result\x18\x02 \x01(\v2\x1d.quarry.node.v1.CommandResultH\x00R\x06resultB\t\n" +
-	"\apayload\"\xf4\x04\n" +
+	"\apayload\"\xbc\x05\n" +
 	"\aCommand\x12%\n" +
 	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12F\n" +
 	"\x0einstall_server\x18\x02 \x01(\v2\x1d.quarry.node.v1.InstallServerH\x00R\rinstallServer\x12@\n" +
@@ -1787,8 +1886,15 @@ const file_quarry_node_v1_nodes_proto_rawDesc = "" +
 	"write_file\x18\t \x01(\v2\x19.quarry.node.v1.WriteFileH\x00R\twriteFile\x12=\n" +
 	"\vdelete_file\x18\n" +
 	" \x01(\v2\x1a.quarry.node.v1.DeleteFileH\x00R\n" +
-	"deleteFileB\b\n" +
-	"\x06action\"\xd5\x02\n" +
+	"deleteFile\x12F\n" +
+	"\x0einstall_plugin\x18\v \x01(\v2\x1d.quarry.node.v1.InstallPluginH\x00R\rinstallPluginB\b\n" +
+	"\x06action\"\x8a\x01\n" +
+	"\rInstallPlugin\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x16\n" +
+	"\x06sha256\x18\x03 \x01(\tR\x06sha256\x12\x16\n" +
+	"\x06sha512\x18\x04 \x01(\tR\x06sha512\x12\x1a\n" +
+	"\bfilename\x18\x05 \x01(\tR\bfilename\"\xd5\x02\n" +
 	"\rInstallServer\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x16\n" +
 	"\x06runner\x18\x02 \x01(\tR\x06runner\x12\x1d\n" +
@@ -1890,7 +1996,7 @@ func file_quarry_node_v1_nodes_proto_rawDescGZIP() []byte {
 	return file_quarry_node_v1_nodes_proto_rawDescData
 }
 
-var file_quarry_node_v1_nodes_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_quarry_node_v1_nodes_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_quarry_node_v1_nodes_proto_goTypes = []any{
 	(*RegisterNodeRequest)(nil),  // 0: quarry.node.v1.RegisterNodeRequest
 	(*RegisterNodeResponse)(nil), // 1: quarry.node.v1.RegisterNodeResponse
@@ -1900,52 +2006,54 @@ var file_quarry_node_v1_nodes_proto_goTypes = []any{
 	(*ChannelResponse)(nil),      // 5: quarry.node.v1.ChannelResponse
 	(*ChannelRequest)(nil),       // 6: quarry.node.v1.ChannelRequest
 	(*Command)(nil),              // 7: quarry.node.v1.Command
-	(*InstallServer)(nil),        // 8: quarry.node.v1.InstallServer
-	(*StartServer)(nil),          // 9: quarry.node.v1.StartServer
-	(*StopServer)(nil),           // 10: quarry.node.v1.StopServer
-	(*KillServer)(nil),           // 11: quarry.node.v1.KillServer
-	(*SendCommand)(nil),          // 12: quarry.node.v1.SendCommand
-	(*ListFiles)(nil),            // 13: quarry.node.v1.ListFiles
-	(*ReadFile)(nil),             // 14: quarry.node.v1.ReadFile
-	(*WriteFile)(nil),            // 15: quarry.node.v1.WriteFile
-	(*DeleteFile)(nil),           // 16: quarry.node.v1.DeleteFile
-	(*CommandResult)(nil),        // 17: quarry.node.v1.CommandResult
-	(*Event)(nil),                // 18: quarry.node.v1.Event
-	(*ConsoleLine)(nil),          // 19: quarry.node.v1.ConsoleLine
-	(*ServerStats)(nil),          // 20: quarry.node.v1.ServerStats
-	(*StatusChange)(nil),         // 21: quarry.node.v1.StatusChange
-	(*InstallProgress)(nil),      // 22: quarry.node.v1.InstallProgress
+	(*InstallPlugin)(nil),        // 8: quarry.node.v1.InstallPlugin
+	(*InstallServer)(nil),        // 9: quarry.node.v1.InstallServer
+	(*StartServer)(nil),          // 10: quarry.node.v1.StartServer
+	(*StopServer)(nil),           // 11: quarry.node.v1.StopServer
+	(*KillServer)(nil),           // 12: quarry.node.v1.KillServer
+	(*SendCommand)(nil),          // 13: quarry.node.v1.SendCommand
+	(*ListFiles)(nil),            // 14: quarry.node.v1.ListFiles
+	(*ReadFile)(nil),             // 15: quarry.node.v1.ReadFile
+	(*WriteFile)(nil),            // 16: quarry.node.v1.WriteFile
+	(*DeleteFile)(nil),           // 17: quarry.node.v1.DeleteFile
+	(*CommandResult)(nil),        // 18: quarry.node.v1.CommandResult
+	(*Event)(nil),                // 19: quarry.node.v1.Event
+	(*ConsoleLine)(nil),          // 20: quarry.node.v1.ConsoleLine
+	(*ServerStats)(nil),          // 21: quarry.node.v1.ServerStats
+	(*StatusChange)(nil),         // 22: quarry.node.v1.StatusChange
+	(*InstallProgress)(nil),      // 23: quarry.node.v1.InstallProgress
 }
 var file_quarry_node_v1_nodes_proto_depIdxs = []int32{
 	2,  // 0: quarry.node.v1.RegisterNodeRequest.info:type_name -> quarry.node.v1.DaemonInfo
 	2,  // 1: quarry.node.v1.HeartbeatRequest.info:type_name -> quarry.node.v1.DaemonInfo
 	7,  // 2: quarry.node.v1.ChannelResponse.command:type_name -> quarry.node.v1.Command
-	18, // 3: quarry.node.v1.ChannelRequest.event:type_name -> quarry.node.v1.Event
-	17, // 4: quarry.node.v1.ChannelRequest.result:type_name -> quarry.node.v1.CommandResult
-	8,  // 5: quarry.node.v1.Command.install_server:type_name -> quarry.node.v1.InstallServer
-	9,  // 6: quarry.node.v1.Command.start_server:type_name -> quarry.node.v1.StartServer
-	10, // 7: quarry.node.v1.Command.stop_server:type_name -> quarry.node.v1.StopServer
-	11, // 8: quarry.node.v1.Command.kill_server:type_name -> quarry.node.v1.KillServer
-	12, // 9: quarry.node.v1.Command.send_command:type_name -> quarry.node.v1.SendCommand
-	13, // 10: quarry.node.v1.Command.list_files:type_name -> quarry.node.v1.ListFiles
-	14, // 11: quarry.node.v1.Command.read_file:type_name -> quarry.node.v1.ReadFile
-	15, // 12: quarry.node.v1.Command.write_file:type_name -> quarry.node.v1.WriteFile
-	16, // 13: quarry.node.v1.Command.delete_file:type_name -> quarry.node.v1.DeleteFile
-	19, // 14: quarry.node.v1.Event.console:type_name -> quarry.node.v1.ConsoleLine
-	20, // 15: quarry.node.v1.Event.stats:type_name -> quarry.node.v1.ServerStats
-	21, // 16: quarry.node.v1.Event.status:type_name -> quarry.node.v1.StatusChange
-	22, // 17: quarry.node.v1.Event.install_progress:type_name -> quarry.node.v1.InstallProgress
-	0,  // 18: quarry.node.v1.NodeAgentService.RegisterNode:input_type -> quarry.node.v1.RegisterNodeRequest
-	3,  // 19: quarry.node.v1.NodeAgentService.Heartbeat:input_type -> quarry.node.v1.HeartbeatRequest
-	6,  // 20: quarry.node.v1.NodeAgentService.Channel:input_type -> quarry.node.v1.ChannelRequest
-	1,  // 21: quarry.node.v1.NodeAgentService.RegisterNode:output_type -> quarry.node.v1.RegisterNodeResponse
-	4,  // 22: quarry.node.v1.NodeAgentService.Heartbeat:output_type -> quarry.node.v1.HeartbeatResponse
-	5,  // 23: quarry.node.v1.NodeAgentService.Channel:output_type -> quarry.node.v1.ChannelResponse
-	21, // [21:24] is the sub-list for method output_type
-	18, // [18:21] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	19, // 3: quarry.node.v1.ChannelRequest.event:type_name -> quarry.node.v1.Event
+	18, // 4: quarry.node.v1.ChannelRequest.result:type_name -> quarry.node.v1.CommandResult
+	9,  // 5: quarry.node.v1.Command.install_server:type_name -> quarry.node.v1.InstallServer
+	10, // 6: quarry.node.v1.Command.start_server:type_name -> quarry.node.v1.StartServer
+	11, // 7: quarry.node.v1.Command.stop_server:type_name -> quarry.node.v1.StopServer
+	12, // 8: quarry.node.v1.Command.kill_server:type_name -> quarry.node.v1.KillServer
+	13, // 9: quarry.node.v1.Command.send_command:type_name -> quarry.node.v1.SendCommand
+	14, // 10: quarry.node.v1.Command.list_files:type_name -> quarry.node.v1.ListFiles
+	15, // 11: quarry.node.v1.Command.read_file:type_name -> quarry.node.v1.ReadFile
+	16, // 12: quarry.node.v1.Command.write_file:type_name -> quarry.node.v1.WriteFile
+	17, // 13: quarry.node.v1.Command.delete_file:type_name -> quarry.node.v1.DeleteFile
+	8,  // 14: quarry.node.v1.Command.install_plugin:type_name -> quarry.node.v1.InstallPlugin
+	20, // 15: quarry.node.v1.Event.console:type_name -> quarry.node.v1.ConsoleLine
+	21, // 16: quarry.node.v1.Event.stats:type_name -> quarry.node.v1.ServerStats
+	22, // 17: quarry.node.v1.Event.status:type_name -> quarry.node.v1.StatusChange
+	23, // 18: quarry.node.v1.Event.install_progress:type_name -> quarry.node.v1.InstallProgress
+	0,  // 19: quarry.node.v1.NodeAgentService.RegisterNode:input_type -> quarry.node.v1.RegisterNodeRequest
+	3,  // 20: quarry.node.v1.NodeAgentService.Heartbeat:input_type -> quarry.node.v1.HeartbeatRequest
+	6,  // 21: quarry.node.v1.NodeAgentService.Channel:input_type -> quarry.node.v1.ChannelRequest
+	1,  // 22: quarry.node.v1.NodeAgentService.RegisterNode:output_type -> quarry.node.v1.RegisterNodeResponse
+	4,  // 23: quarry.node.v1.NodeAgentService.Heartbeat:output_type -> quarry.node.v1.HeartbeatResponse
+	5,  // 24: quarry.node.v1.NodeAgentService.Channel:output_type -> quarry.node.v1.ChannelResponse
+	22, // [22:25] is the sub-list for method output_type
+	19, // [19:22] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_quarry_node_v1_nodes_proto_init() }
@@ -1967,8 +2075,9 @@ func file_quarry_node_v1_nodes_proto_init() {
 		(*Command_ReadFile)(nil),
 		(*Command_WriteFile)(nil),
 		(*Command_DeleteFile)(nil),
+		(*Command_InstallPlugin)(nil),
 	}
-	file_quarry_node_v1_nodes_proto_msgTypes[18].OneofWrappers = []any{
+	file_quarry_node_v1_nodes_proto_msgTypes[19].OneofWrappers = []any{
 		(*Event_Console)(nil),
 		(*Event_Stats)(nil),
 		(*Event_Status)(nil),
@@ -1980,7 +2089,7 @@ func file_quarry_node_v1_nodes_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_quarry_node_v1_nodes_proto_rawDesc), len(file_quarry_node_v1_nodes_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   23,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

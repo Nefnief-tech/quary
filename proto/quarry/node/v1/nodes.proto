@@ -100,7 +100,23 @@ message Command {
     ReadFile read_file = 8;
     WriteFile write_file = 9;
     DeleteFile delete_file = 10;
+    InstallPlugin install_plugin = 11;
   }
+}
+
+// InstallPlugin downloads a marketplace jar into the server's content
+// directory (plugins/ or mods/). The checksum published by the marketplace
+// is verified before the file lands.
+message InstallPlugin {
+  string server_id = 1;
+  // Marketplace download URL; the daemon rejects private addresses.
+  string url = 2;
+  // SHA-256 or SHA-512 hex checksum, whichever the source publishes.
+  string sha256 = 3;
+  string sha512 = 4;
+  // Path relative to the server data directory, including the content dir
+  // prefix the panel derives from the runner ("plugins/…" or "mods/…").
+  string filename = 5;
 }
 
 message InstallServer {

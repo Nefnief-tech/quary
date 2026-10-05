@@ -137,6 +137,8 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 	switch action := cmd.GetAction().(type) {
 	case *nodesv1.Command_InstallServer:
 		return m.Install(ctx, action.InstallServer, em)
+	case *nodesv1.Command_InstallPlugin:
+		return m.InstallPlugin(ctx, action.InstallPlugin, em)
 	case *nodesv1.Command_StartServer:
 		return m.Start(ctx, action.StartServer, em)
 	case *nodesv1.Command_StopServer:
