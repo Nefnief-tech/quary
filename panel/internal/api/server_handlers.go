@@ -229,8 +229,12 @@ func (s *Server) consoleToken(w http.ResponseWriter, r *http.Request) {
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
-	// Token-authenticated: same-origin checks do not apply. (gorilla accepts
-	// all origins when CheckSameOrigin is nil — access is gated by the token.)
+	// Access is gated by the short-lived signed token minted after the
+	// permission checks, so origin enforcement adds nothing — and gorilla's
+	// default (reject when Origin host != request Host) wrongly rejects
+	// browsers behind the dev proxy, where Origin (:5173) and Host (:8080)
+	// legitimately differ.
+	CheckOrigin: func(*http.Request) bool { return true },
 }
 
 // consoleWS streams console lines/status/stats to the browser and forwards
