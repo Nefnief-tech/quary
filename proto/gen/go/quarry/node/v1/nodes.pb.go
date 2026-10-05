@@ -343,6 +343,1401 @@ func (x *HeartbeatResponse) GetServerTimeUnixMilli() int64 {
 	return 0
 }
 
+// NodeDownstream carries a panel command to the daemon.
+type ChannelResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Command       *Command               `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChannelResponse) Reset() {
+	*x = ChannelResponse{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChannelResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChannelResponse) ProtoMessage() {}
+
+func (x *ChannelResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChannelResponse.ProtoReflect.Descriptor instead.
+func (*ChannelResponse) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ChannelResponse) GetCommand() *Command {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+// NodeUpstream carries events and command results back to the panel.
+type ChannelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*ChannelRequest_Event
+	//	*ChannelRequest_Result
+	Payload       isChannelRequest_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChannelRequest) Reset() {
+	*x = ChannelRequest{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChannelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChannelRequest) ProtoMessage() {}
+
+func (x *ChannelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChannelRequest.ProtoReflect.Descriptor instead.
+func (*ChannelRequest) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ChannelRequest) GetPayload() isChannelRequest_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *ChannelRequest) GetEvent() *Event {
+	if x != nil {
+		if x, ok := x.Payload.(*ChannelRequest_Event); ok {
+			return x.Event
+		}
+	}
+	return nil
+}
+
+func (x *ChannelRequest) GetResult() *CommandResult {
+	if x != nil {
+		if x, ok := x.Payload.(*ChannelRequest_Result); ok {
+			return x.Result
+		}
+	}
+	return nil
+}
+
+type isChannelRequest_Payload interface {
+	isChannelRequest_Payload()
+}
+
+type ChannelRequest_Event struct {
+	Event *Event `protobuf:"bytes,1,opt,name=event,proto3,oneof"`
+}
+
+type ChannelRequest_Result struct {
+	Result *CommandResult `protobuf:"bytes,2,opt,name=result,proto3,oneof"`
+}
+
+func (*ChannelRequest_Event) isChannelRequest_Payload() {}
+
+func (*ChannelRequest_Result) isChannelRequest_Payload() {}
+
+// Command is one instruction from the panel to the daemon. Every command
+// carries a correlation id echoed back in CommandResult.
+type Command struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CorrelationId string                 `protobuf:"bytes,1,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*Command_InstallServer
+	//	*Command_StartServer
+	//	*Command_StopServer
+	//	*Command_KillServer
+	//	*Command_SendCommand
+	//	*Command_ListFiles
+	//	*Command_ReadFile
+	//	*Command_WriteFile
+	//	*Command_DeleteFile
+	Action        isCommand_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Command) Reset() {
+	*x = Command{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Command) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Command) ProtoMessage() {}
+
+func (x *Command) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Command.ProtoReflect.Descriptor instead.
+func (*Command) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *Command) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+func (x *Command) GetAction() isCommand_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *Command) GetInstallServer() *InstallServer {
+	if x != nil {
+		if x, ok := x.Action.(*Command_InstallServer); ok {
+			return x.InstallServer
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetStartServer() *StartServer {
+	if x != nil {
+		if x, ok := x.Action.(*Command_StartServer); ok {
+			return x.StartServer
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetStopServer() *StopServer {
+	if x != nil {
+		if x, ok := x.Action.(*Command_StopServer); ok {
+			return x.StopServer
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetKillServer() *KillServer {
+	if x != nil {
+		if x, ok := x.Action.(*Command_KillServer); ok {
+			return x.KillServer
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetSendCommand() *SendCommand {
+	if x != nil {
+		if x, ok := x.Action.(*Command_SendCommand); ok {
+			return x.SendCommand
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetListFiles() *ListFiles {
+	if x != nil {
+		if x, ok := x.Action.(*Command_ListFiles); ok {
+			return x.ListFiles
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetReadFile() *ReadFile {
+	if x != nil {
+		if x, ok := x.Action.(*Command_ReadFile); ok {
+			return x.ReadFile
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetWriteFile() *WriteFile {
+	if x != nil {
+		if x, ok := x.Action.(*Command_WriteFile); ok {
+			return x.WriteFile
+		}
+	}
+	return nil
+}
+
+func (x *Command) GetDeleteFile() *DeleteFile {
+	if x != nil {
+		if x, ok := x.Action.(*Command_DeleteFile); ok {
+			return x.DeleteFile
+		}
+	}
+	return nil
+}
+
+type isCommand_Action interface {
+	isCommand_Action()
+}
+
+type Command_InstallServer struct {
+	InstallServer *InstallServer `protobuf:"bytes,2,opt,name=install_server,json=installServer,proto3,oneof"`
+}
+
+type Command_StartServer struct {
+	StartServer *StartServer `protobuf:"bytes,3,opt,name=start_server,json=startServer,proto3,oneof"`
+}
+
+type Command_StopServer struct {
+	StopServer *StopServer `protobuf:"bytes,4,opt,name=stop_server,json=stopServer,proto3,oneof"`
+}
+
+type Command_KillServer struct {
+	KillServer *KillServer `protobuf:"bytes,5,opt,name=kill_server,json=killServer,proto3,oneof"`
+}
+
+type Command_SendCommand struct {
+	SendCommand *SendCommand `protobuf:"bytes,6,opt,name=send_command,json=sendCommand,proto3,oneof"`
+}
+
+type Command_ListFiles struct {
+	ListFiles *ListFiles `protobuf:"bytes,7,opt,name=list_files,json=listFiles,proto3,oneof"`
+}
+
+type Command_ReadFile struct {
+	ReadFile *ReadFile `protobuf:"bytes,8,opt,name=read_file,json=readFile,proto3,oneof"`
+}
+
+type Command_WriteFile struct {
+	WriteFile *WriteFile `protobuf:"bytes,9,opt,name=write_file,json=writeFile,proto3,oneof"`
+}
+
+type Command_DeleteFile struct {
+	DeleteFile *DeleteFile `protobuf:"bytes,10,opt,name=delete_file,json=deleteFile,proto3,oneof"`
+}
+
+func (*Command_InstallServer) isCommand_Action() {}
+
+func (*Command_StartServer) isCommand_Action() {}
+
+func (*Command_StopServer) isCommand_Action() {}
+
+func (*Command_KillServer) isCommand_Action() {}
+
+func (*Command_SendCommand) isCommand_Action() {}
+
+func (*Command_ListFiles) isCommand_Action() {}
+
+func (*Command_ReadFile) isCommand_Action() {}
+
+func (*Command_WriteFile) isCommand_Action() {}
+
+func (*Command_DeleteFile) isCommand_Action() {}
+
+type InstallServer struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ServerId  string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Runner    string                 `protobuf:"bytes,2,opt,name=runner,proto3" json:"runner,omitempty"`
+	McVersion string                 `protobuf:"bytes,3,opt,name=mc_version,json=mcVersion,proto3" json:"mc_version,omitempty"`
+	// Where to fetch the artifact (checksum-verified by the daemon).
+	ArtifactUrl    string `protobuf:"bytes,4,opt,name=artifact_url,json=artifactUrl,proto3" json:"artifact_url,omitempty"`
+	ArtifactSha256 string `protobuf:"bytes,5,opt,name=artifact_sha256,json=artifactSha256,proto3" json:"artifact_sha256,omitempty"`
+	ArtifactName   string `protobuf:"bytes,6,opt,name=artifact_name,json=artifactName,proto3" json:"artifact_name,omitempty"`
+	// Docker image to use for the run phase.
+	Image string `protobuf:"bytes,7,opt,name=image,proto3" json:"image,omitempty"`
+	// Launch command executed in the container (argv).
+	Launch []string `protobuf:"bytes,8,rep,name=launch,proto3" json:"launch,omitempty"`
+	// Memory limit in MiB.
+	MemoryMb int32 `protobuf:"varint,9,opt,name=memory_mb,json=memoryMb,proto3" json:"memory_mb,omitempty"`
+	// Allocated address the server should bind inside the container.
+	BindIp        string `protobuf:"bytes,10,opt,name=bind_ip,json=bindIp,proto3" json:"bind_ip,omitempty"`
+	BindPort      int32  `protobuf:"varint,11,opt,name=bind_port,json=bindPort,proto3" json:"bind_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstallServer) Reset() {
+	*x = InstallServer{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstallServer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstallServer) ProtoMessage() {}
+
+func (x *InstallServer) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstallServer.ProtoReflect.Descriptor instead.
+func (*InstallServer) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *InstallServer) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *InstallServer) GetRunner() string {
+	if x != nil {
+		return x.Runner
+	}
+	return ""
+}
+
+func (x *InstallServer) GetMcVersion() string {
+	if x != nil {
+		return x.McVersion
+	}
+	return ""
+}
+
+func (x *InstallServer) GetArtifactUrl() string {
+	if x != nil {
+		return x.ArtifactUrl
+	}
+	return ""
+}
+
+func (x *InstallServer) GetArtifactSha256() string {
+	if x != nil {
+		return x.ArtifactSha256
+	}
+	return ""
+}
+
+func (x *InstallServer) GetArtifactName() string {
+	if x != nil {
+		return x.ArtifactName
+	}
+	return ""
+}
+
+func (x *InstallServer) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *InstallServer) GetLaunch() []string {
+	if x != nil {
+		return x.Launch
+	}
+	return nil
+}
+
+func (x *InstallServer) GetMemoryMb() int32 {
+	if x != nil {
+		return x.MemoryMb
+	}
+	return 0
+}
+
+func (x *InstallServer) GetBindIp() string {
+	if x != nil {
+		return x.BindIp
+	}
+	return ""
+}
+
+func (x *InstallServer) GetBindPort() int32 {
+	if x != nil {
+		return x.BindPort
+	}
+	return 0
+}
+
+type StartServer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Image         string                 `protobuf:"bytes,2,opt,name=image,proto3" json:"image,omitempty"`
+	Launch        []string               `protobuf:"bytes,3,rep,name=launch,proto3" json:"launch,omitempty"`
+	MemoryMb      int32                  `protobuf:"varint,4,opt,name=memory_mb,json=memoryMb,proto3" json:"memory_mb,omitempty"`
+	CpuPercent    int32                  `protobuf:"varint,5,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"` // 100 = one core
+	BindIp        string                 `protobuf:"bytes,6,opt,name=bind_ip,json=bindIp,proto3" json:"bind_ip,omitempty"`
+	BindPort      int32                  `protobuf:"varint,7,opt,name=bind_port,json=bindPort,proto3" json:"bind_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartServer) Reset() {
+	*x = StartServer{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartServer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartServer) ProtoMessage() {}
+
+func (x *StartServer) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartServer.ProtoReflect.Descriptor instead.
+func (*StartServer) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *StartServer) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *StartServer) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *StartServer) GetLaunch() []string {
+	if x != nil {
+		return x.Launch
+	}
+	return nil
+}
+
+func (x *StartServer) GetMemoryMb() int32 {
+	if x != nil {
+		return x.MemoryMb
+	}
+	return 0
+}
+
+func (x *StartServer) GetCpuPercent() int32 {
+	if x != nil {
+		return x.CpuPercent
+	}
+	return 0
+}
+
+func (x *StartServer) GetBindIp() string {
+	if x != nil {
+		return x.BindIp
+	}
+	return ""
+}
+
+func (x *StartServer) GetBindPort() int32 {
+	if x != nil {
+		return x.BindPort
+	}
+	return 0
+}
+
+type StopServer struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	// Seconds to wait after the graceful console stop before killing.
+	TimeoutSeconds int32 `protobuf:"varint,2,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *StopServer) Reset() {
+	*x = StopServer{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopServer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopServer) ProtoMessage() {}
+
+func (x *StopServer) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopServer.ProtoReflect.Descriptor instead.
+func (*StopServer) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *StopServer) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *StopServer) GetTimeoutSeconds() int32 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
+}
+
+type KillServer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KillServer) Reset() {
+	*x = KillServer{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KillServer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KillServer) ProtoMessage() {}
+
+func (x *KillServer) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KillServer.ProtoReflect.Descriptor instead.
+func (*KillServer) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *KillServer) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+type SendCommand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Input         string                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendCommand) Reset() {
+	*x = SendCommand{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendCommand) ProtoMessage() {}
+
+func (x *SendCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendCommand.ProtoReflect.Descriptor instead.
+func (*SendCommand) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SendCommand) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *SendCommand) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+type ListFiles struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	// Path relative to the server's data directory.
+	Path          string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListFiles) Reset() {
+	*x = ListFiles{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListFiles) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListFiles) ProtoMessage() {}
+
+func (x *ListFiles) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListFiles.ProtoReflect.Descriptor instead.
+func (*ListFiles) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListFiles) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *ListFiles) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ReadFile struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path     string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// Files larger than this are rejected; the web editor is for config files.
+	MaxBytes      int32 `protobuf:"varint,3,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadFile) Reset() {
+	*x = ReadFile{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadFile) ProtoMessage() {}
+
+func (x *ReadFile) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadFile.ProtoReflect.Descriptor instead.
+func (*ReadFile) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ReadFile) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *ReadFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *ReadFile) GetMaxBytes() int32 {
+	if x != nil {
+		return x.MaxBytes
+	}
+	return 0
+}
+
+type WriteFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Content       []byte                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	CreateDirs    bool                   `protobuf:"varint,4,opt,name=create_dirs,json=createDirs,proto3" json:"create_dirs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WriteFile) Reset() {
+	*x = WriteFile{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WriteFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WriteFile) ProtoMessage() {}
+
+func (x *WriteFile) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WriteFile.ProtoReflect.Descriptor instead.
+func (*WriteFile) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *WriteFile) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *WriteFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WriteFile) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+func (x *WriteFile) GetCreateDirs() bool {
+	if x != nil {
+		return x.CreateDirs
+	}
+	return false
+}
+
+type DeleteFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Recursive     bool                   `protobuf:"varint,3,opt,name=recursive,proto3" json:"recursive,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteFile) Reset() {
+	*x = DeleteFile{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteFile) ProtoMessage() {}
+
+func (x *DeleteFile) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteFile.ProtoReflect.Descriptor instead.
+func (*DeleteFile) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *DeleteFile) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *DeleteFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DeleteFile) GetRecursive() bool {
+	if x != nil {
+		return x.Recursive
+	}
+	return false
+}
+
+// CommandResult is the terminal response for a correlation id. Payloads are
+// encoded per-command as JSON in `body` to keep the surface small; typed
+// messages arrive as streaming Events.
+type CommandResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CorrelationId string                 `protobuf:"bytes,1,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	Ok            bool                   `protobuf:"varint,2,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Body          []byte                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommandResult) Reset() {
+	*x = CommandResult{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommandResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandResult) ProtoMessage() {}
+
+func (x *CommandResult) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
+func (*CommandResult) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *CommandResult) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+func (x *CommandResult) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *CommandResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *CommandResult) GetBody() []byte {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+type Event struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*Event_Console
+	//	*Event_Stats
+	//	*Event_Status
+	//	*Event_InstallProgress
+	Payload       isEvent_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Event.ProtoReflect.Descriptor instead.
+func (*Event) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *Event) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *Event) GetPayload() isEvent_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *Event) GetConsole() *ConsoleLine {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_Console); ok {
+			return x.Console
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetStats() *ServerStats {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_Stats); ok {
+			return x.Stats
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetStatus() *StatusChange {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_Status); ok {
+			return x.Status
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetInstallProgress() *InstallProgress {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_InstallProgress); ok {
+			return x.InstallProgress
+		}
+	}
+	return nil
+}
+
+type isEvent_Payload interface {
+	isEvent_Payload()
+}
+
+type Event_Console struct {
+	Console *ConsoleLine `protobuf:"bytes,2,opt,name=console,proto3,oneof"`
+}
+
+type Event_Stats struct {
+	Stats *ServerStats `protobuf:"bytes,3,opt,name=stats,proto3,oneof"`
+}
+
+type Event_Status struct {
+	Status *StatusChange `protobuf:"bytes,4,opt,name=status,proto3,oneof"`
+}
+
+type Event_InstallProgress struct {
+	InstallProgress *InstallProgress `protobuf:"bytes,5,opt,name=install_progress,json=installProgress,proto3,oneof"`
+}
+
+func (*Event_Console) isEvent_Payload() {}
+
+func (*Event_Stats) isEvent_Payload() {}
+
+func (*Event_Status) isEvent_Payload() {}
+
+func (*Event_InstallProgress) isEvent_Payload() {}
+
+type ConsoleLine struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Milliseconds since the Unix epoch, per the daemon's clock.
+	AtUnixMilli int64  `protobuf:"varint,1,opt,name=at_unix_milli,json=atUnixMilli,proto3" json:"at_unix_milli,omitempty"`
+	Line        string `protobuf:"bytes,2,opt,name=line,proto3" json:"line,omitempty"`
+	// stdin echoes are flagged so the UI can style them.
+	FromStdin     bool `protobuf:"varint,3,opt,name=from_stdin,json=fromStdin,proto3" json:"from_stdin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConsoleLine) Reset() {
+	*x = ConsoleLine{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsoleLine) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsoleLine) ProtoMessage() {}
+
+func (x *ConsoleLine) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsoleLine.ProtoReflect.Descriptor instead.
+func (*ConsoleLine) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ConsoleLine) GetAtUnixMilli() int64 {
+	if x != nil {
+		return x.AtUnixMilli
+	}
+	return 0
+}
+
+func (x *ConsoleLine) GetLine() string {
+	if x != nil {
+		return x.Line
+	}
+	return ""
+}
+
+func (x *ConsoleLine) GetFromStdin() bool {
+	if x != nil {
+		return x.FromStdin
+	}
+	return false
+}
+
+type ServerStats struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	CpuPercent           float64                `protobuf:"fixed64,1,opt,name=cpu_percent,json=cpuPercent,proto3" json:"cpu_percent,omitempty"`
+	MemoryUsedMb         float64                `protobuf:"fixed64,2,opt,name=memory_used_mb,json=memoryUsedMb,proto3" json:"memory_used_mb,omitempty"`
+	MemoryLimitMb        float64                `protobuf:"fixed64,3,opt,name=memory_limit_mb,json=memoryLimitMb,proto3" json:"memory_limit_mb,omitempty"`
+	DiskUsedMb           float64                `protobuf:"fixed64,4,opt,name=disk_used_mb,json=diskUsedMb,proto3" json:"disk_used_mb,omitempty"`
+	NetworkRxBytesPerSec float64                `protobuf:"fixed64,5,opt,name=network_rx_bytes_per_sec,json=networkRxBytesPerSec,proto3" json:"network_rx_bytes_per_sec,omitempty"`
+	NetworkTxBytesPerSec float64                `protobuf:"fixed64,6,opt,name=network_tx_bytes_per_sec,json=networkTxBytesPerSec,proto3" json:"network_tx_bytes_per_sec,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ServerStats) Reset() {
+	*x = ServerStats{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServerStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServerStats) ProtoMessage() {}
+
+func (x *ServerStats) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServerStats.ProtoReflect.Descriptor instead.
+func (*ServerStats) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ServerStats) GetCpuPercent() float64 {
+	if x != nil {
+		return x.CpuPercent
+	}
+	return 0
+}
+
+func (x *ServerStats) GetMemoryUsedMb() float64 {
+	if x != nil {
+		return x.MemoryUsedMb
+	}
+	return 0
+}
+
+func (x *ServerStats) GetMemoryLimitMb() float64 {
+	if x != nil {
+		return x.MemoryLimitMb
+	}
+	return 0
+}
+
+func (x *ServerStats) GetDiskUsedMb() float64 {
+	if x != nil {
+		return x.DiskUsedMb
+	}
+	return 0
+}
+
+func (x *ServerStats) GetNetworkRxBytesPerSec() float64 {
+	if x != nil {
+		return x.NetworkRxBytesPerSec
+	}
+	return 0
+}
+
+func (x *ServerStats) GetNetworkTxBytesPerSec() float64 {
+	if x != nil {
+		return x.NetworkTxBytesPerSec
+	}
+	return 0
+}
+
+type StatusChange struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"` // installing | offline | starting | running | stopping | crashed
+	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatusChange) Reset() {
+	*x = StatusChange{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusChange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusChange) ProtoMessage() {}
+
+func (x *StatusChange) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusChange.ProtoReflect.Descriptor instead.
+func (*StatusChange) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *StatusChange) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *StatusChange) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
+type InstallProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Step          string                 `protobuf:"bytes,1,opt,name=step,proto3" json:"step,omitempty"`
+	Percent       float64                `protobuf:"fixed64,2,opt,name=percent,proto3" json:"percent,omitempty"`
+	Detail        string                 `protobuf:"bytes,3,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstallProgress) Reset() {
+	*x = InstallProgress{}
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstallProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstallProgress) ProtoMessage() {}
+
+func (x *InstallProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_quarry_node_v1_nodes_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstallProgress.ProtoReflect.Descriptor instead.
+func (*InstallProgress) Descriptor() ([]byte, []int) {
+	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *InstallProgress) GetStep() string {
+	if x != nil {
+		return x.Step
+	}
+	return ""
+}
+
+func (x *InstallProgress) GetPercent() float64 {
+	if x != nil {
+		return x.Percent
+	}
+	return 0
+}
+
+func (x *InstallProgress) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
 var File_quarry_node_v1_nodes_proto protoreflect.FileDescriptor
 
 const file_quarry_node_v1_nodes_proto_rawDesc = "" +
@@ -369,10 +1764,119 @@ const file_quarry_node_v1_nodes_proto_rawDesc = "" +
 	"\x04info\x18\x02 \x01(\v2\x1a.quarry.node.v1.DaemonInfoR\x04info\x12+\n" +
 	"\x12sent_at_unix_milli\x18\x03 \x01(\x03R\x0fsentAtUnixMilli\"H\n" +
 	"\x11HeartbeatResponse\x123\n" +
-	"\x16server_time_unix_milli\x18\x01 \x01(\x03R\x13serverTimeUnixMilli2\xc3\x01\n" +
+	"\x16server_time_unix_milli\x18\x01 \x01(\x03R\x13serverTimeUnixMilli\"D\n" +
+	"\x0fChannelResponse\x121\n" +
+	"\acommand\x18\x01 \x01(\v2\x17.quarry.node.v1.CommandR\acommand\"\x83\x01\n" +
+	"\x0eChannelRequest\x12-\n" +
+	"\x05event\x18\x01 \x01(\v2\x15.quarry.node.v1.EventH\x00R\x05event\x127\n" +
+	"\x06result\x18\x02 \x01(\v2\x1d.quarry.node.v1.CommandResultH\x00R\x06resultB\t\n" +
+	"\apayload\"\xf4\x04\n" +
+	"\aCommand\x12%\n" +
+	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12F\n" +
+	"\x0einstall_server\x18\x02 \x01(\v2\x1d.quarry.node.v1.InstallServerH\x00R\rinstallServer\x12@\n" +
+	"\fstart_server\x18\x03 \x01(\v2\x1b.quarry.node.v1.StartServerH\x00R\vstartServer\x12=\n" +
+	"\vstop_server\x18\x04 \x01(\v2\x1a.quarry.node.v1.StopServerH\x00R\n" +
+	"stopServer\x12=\n" +
+	"\vkill_server\x18\x05 \x01(\v2\x1a.quarry.node.v1.KillServerH\x00R\n" +
+	"killServer\x12@\n" +
+	"\fsend_command\x18\x06 \x01(\v2\x1b.quarry.node.v1.SendCommandH\x00R\vsendCommand\x12:\n" +
+	"\n" +
+	"list_files\x18\a \x01(\v2\x19.quarry.node.v1.ListFilesH\x00R\tlistFiles\x127\n" +
+	"\tread_file\x18\b \x01(\v2\x18.quarry.node.v1.ReadFileH\x00R\breadFile\x12:\n" +
+	"\n" +
+	"write_file\x18\t \x01(\v2\x19.quarry.node.v1.WriteFileH\x00R\twriteFile\x12=\n" +
+	"\vdelete_file\x18\n" +
+	" \x01(\v2\x1a.quarry.node.v1.DeleteFileH\x00R\n" +
+	"deleteFileB\b\n" +
+	"\x06action\"\xd5\x02\n" +
+	"\rInstallServer\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x16\n" +
+	"\x06runner\x18\x02 \x01(\tR\x06runner\x12\x1d\n" +
+	"\n" +
+	"mc_version\x18\x03 \x01(\tR\tmcVersion\x12!\n" +
+	"\fartifact_url\x18\x04 \x01(\tR\vartifactUrl\x12'\n" +
+	"\x0fartifact_sha256\x18\x05 \x01(\tR\x0eartifactSha256\x12#\n" +
+	"\rartifact_name\x18\x06 \x01(\tR\fartifactName\x12\x14\n" +
+	"\x05image\x18\a \x01(\tR\x05image\x12\x16\n" +
+	"\x06launch\x18\b \x03(\tR\x06launch\x12\x1b\n" +
+	"\tmemory_mb\x18\t \x01(\x05R\bmemoryMb\x12\x17\n" +
+	"\abind_ip\x18\n" +
+	" \x01(\tR\x06bindIp\x12\x1b\n" +
+	"\tbind_port\x18\v \x01(\x05R\bbindPort\"\xcc\x01\n" +
+	"\vStartServer\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
+	"\x05image\x18\x02 \x01(\tR\x05image\x12\x16\n" +
+	"\x06launch\x18\x03 \x03(\tR\x06launch\x12\x1b\n" +
+	"\tmemory_mb\x18\x04 \x01(\x05R\bmemoryMb\x12\x1f\n" +
+	"\vcpu_percent\x18\x05 \x01(\x05R\n" +
+	"cpuPercent\x12\x17\n" +
+	"\abind_ip\x18\x06 \x01(\tR\x06bindIp\x12\x1b\n" +
+	"\tbind_port\x18\a \x01(\x05R\bbindPort\"R\n" +
+	"\n" +
+	"StopServer\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12'\n" +
+	"\x0ftimeout_seconds\x18\x02 \x01(\x05R\x0etimeoutSeconds\")\n" +
+	"\n" +
+	"KillServer\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"@\n" +
+	"\vSendCommand\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
+	"\x05input\x18\x02 \x01(\tR\x05input\"<\n" +
+	"\tListFiles\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"X\n" +
+	"\bReadFile\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1b\n" +
+	"\tmax_bytes\x18\x03 \x01(\x05R\bmaxBytes\"w\n" +
+	"\tWriteFile\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\fR\acontent\x12\x1f\n" +
+	"\vcreate_dirs\x18\x04 \x01(\bR\n" +
+	"createDirs\"[\n" +
+	"\n" +
+	"DeleteFile\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1c\n" +
+	"\trecursive\x18\x03 \x01(\bR\trecursive\"p\n" +
+	"\rCommandResult\x12%\n" +
+	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12\x0e\n" +
+	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\fR\x04body\"\xa3\x02\n" +
+	"\x05Event\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x127\n" +
+	"\aconsole\x18\x02 \x01(\v2\x1b.quarry.node.v1.ConsoleLineH\x00R\aconsole\x123\n" +
+	"\x05stats\x18\x03 \x01(\v2\x1b.quarry.node.v1.ServerStatsH\x00R\x05stats\x126\n" +
+	"\x06status\x18\x04 \x01(\v2\x1c.quarry.node.v1.StatusChangeH\x00R\x06status\x12L\n" +
+	"\x10install_progress\x18\x05 \x01(\v2\x1f.quarry.node.v1.InstallProgressH\x00R\x0finstallProgressB\t\n" +
+	"\apayload\"d\n" +
+	"\vConsoleLine\x12\"\n" +
+	"\rat_unix_milli\x18\x01 \x01(\x03R\vatUnixMilli\x12\x12\n" +
+	"\x04line\x18\x02 \x01(\tR\x04line\x12\x1d\n" +
+	"\n" +
+	"from_stdin\x18\x03 \x01(\bR\tfromStdin\"\x8e\x02\n" +
+	"\vServerStats\x12\x1f\n" +
+	"\vcpu_percent\x18\x01 \x01(\x01R\n" +
+	"cpuPercent\x12$\n" +
+	"\x0ememory_used_mb\x18\x02 \x01(\x01R\fmemoryUsedMb\x12&\n" +
+	"\x0fmemory_limit_mb\x18\x03 \x01(\x01R\rmemoryLimitMb\x12 \n" +
+	"\fdisk_used_mb\x18\x04 \x01(\x01R\n" +
+	"diskUsedMb\x126\n" +
+	"\x18network_rx_bytes_per_sec\x18\x05 \x01(\x01R\x14networkRxBytesPerSec\x126\n" +
+	"\x18network_tx_bytes_per_sec\x18\x06 \x01(\x01R\x14networkTxBytesPerSec\">\n" +
+	"\fStatusChange\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x16\n" +
+	"\x06detail\x18\x02 \x01(\tR\x06detail\"W\n" +
+	"\x0fInstallProgress\x12\x12\n" +
+	"\x04step\x18\x01 \x01(\tR\x04step\x12\x18\n" +
+	"\apercent\x18\x02 \x01(\x01R\apercent\x12\x16\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail2\x93\x02\n" +
 	"\x10NodeAgentService\x12Y\n" +
 	"\fRegisterNode\x12#.quarry.node.v1.RegisterNodeRequest\x1a$.quarry.node.v1.RegisterNodeResponse\x12T\n" +
-	"\tHeartbeat\x12 .quarry.node.v1.HeartbeatRequest\x1a!.quarry.node.v1.HeartbeatResponse(\x010\x01B7Z5quarry.dev/quarry/proto/gen/go/quarry/node/v1;nodesv1b\x06proto3"
+	"\tHeartbeat\x12 .quarry.node.v1.HeartbeatRequest\x1a!.quarry.node.v1.HeartbeatResponse(\x010\x01\x12N\n" +
+	"\aChannel\x12\x1e.quarry.node.v1.ChannelRequest\x1a\x1f.quarry.node.v1.ChannelResponse(\x010\x01B7Z5quarry.dev/quarry/proto/gen/go/quarry/node/v1;nodesv1b\x06proto3"
 
 var (
 	file_quarry_node_v1_nodes_proto_rawDescOnce sync.Once
@@ -386,26 +1890,62 @@ func file_quarry_node_v1_nodes_proto_rawDescGZIP() []byte {
 	return file_quarry_node_v1_nodes_proto_rawDescData
 }
 
-var file_quarry_node_v1_nodes_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_quarry_node_v1_nodes_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_quarry_node_v1_nodes_proto_goTypes = []any{
 	(*RegisterNodeRequest)(nil),  // 0: quarry.node.v1.RegisterNodeRequest
 	(*RegisterNodeResponse)(nil), // 1: quarry.node.v1.RegisterNodeResponse
 	(*DaemonInfo)(nil),           // 2: quarry.node.v1.DaemonInfo
 	(*HeartbeatRequest)(nil),     // 3: quarry.node.v1.HeartbeatRequest
 	(*HeartbeatResponse)(nil),    // 4: quarry.node.v1.HeartbeatResponse
+	(*ChannelResponse)(nil),      // 5: quarry.node.v1.ChannelResponse
+	(*ChannelRequest)(nil),       // 6: quarry.node.v1.ChannelRequest
+	(*Command)(nil),              // 7: quarry.node.v1.Command
+	(*InstallServer)(nil),        // 8: quarry.node.v1.InstallServer
+	(*StartServer)(nil),          // 9: quarry.node.v1.StartServer
+	(*StopServer)(nil),           // 10: quarry.node.v1.StopServer
+	(*KillServer)(nil),           // 11: quarry.node.v1.KillServer
+	(*SendCommand)(nil),          // 12: quarry.node.v1.SendCommand
+	(*ListFiles)(nil),            // 13: quarry.node.v1.ListFiles
+	(*ReadFile)(nil),             // 14: quarry.node.v1.ReadFile
+	(*WriteFile)(nil),            // 15: quarry.node.v1.WriteFile
+	(*DeleteFile)(nil),           // 16: quarry.node.v1.DeleteFile
+	(*CommandResult)(nil),        // 17: quarry.node.v1.CommandResult
+	(*Event)(nil),                // 18: quarry.node.v1.Event
+	(*ConsoleLine)(nil),          // 19: quarry.node.v1.ConsoleLine
+	(*ServerStats)(nil),          // 20: quarry.node.v1.ServerStats
+	(*StatusChange)(nil),         // 21: quarry.node.v1.StatusChange
+	(*InstallProgress)(nil),      // 22: quarry.node.v1.InstallProgress
 }
 var file_quarry_node_v1_nodes_proto_depIdxs = []int32{
-	2, // 0: quarry.node.v1.RegisterNodeRequest.info:type_name -> quarry.node.v1.DaemonInfo
-	2, // 1: quarry.node.v1.HeartbeatRequest.info:type_name -> quarry.node.v1.DaemonInfo
-	0, // 2: quarry.node.v1.NodeAgentService.RegisterNode:input_type -> quarry.node.v1.RegisterNodeRequest
-	3, // 3: quarry.node.v1.NodeAgentService.Heartbeat:input_type -> quarry.node.v1.HeartbeatRequest
-	1, // 4: quarry.node.v1.NodeAgentService.RegisterNode:output_type -> quarry.node.v1.RegisterNodeResponse
-	4, // 5: quarry.node.v1.NodeAgentService.Heartbeat:output_type -> quarry.node.v1.HeartbeatResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	2,  // 0: quarry.node.v1.RegisterNodeRequest.info:type_name -> quarry.node.v1.DaemonInfo
+	2,  // 1: quarry.node.v1.HeartbeatRequest.info:type_name -> quarry.node.v1.DaemonInfo
+	7,  // 2: quarry.node.v1.ChannelResponse.command:type_name -> quarry.node.v1.Command
+	18, // 3: quarry.node.v1.ChannelRequest.event:type_name -> quarry.node.v1.Event
+	17, // 4: quarry.node.v1.ChannelRequest.result:type_name -> quarry.node.v1.CommandResult
+	8,  // 5: quarry.node.v1.Command.install_server:type_name -> quarry.node.v1.InstallServer
+	9,  // 6: quarry.node.v1.Command.start_server:type_name -> quarry.node.v1.StartServer
+	10, // 7: quarry.node.v1.Command.stop_server:type_name -> quarry.node.v1.StopServer
+	11, // 8: quarry.node.v1.Command.kill_server:type_name -> quarry.node.v1.KillServer
+	12, // 9: quarry.node.v1.Command.send_command:type_name -> quarry.node.v1.SendCommand
+	13, // 10: quarry.node.v1.Command.list_files:type_name -> quarry.node.v1.ListFiles
+	14, // 11: quarry.node.v1.Command.read_file:type_name -> quarry.node.v1.ReadFile
+	15, // 12: quarry.node.v1.Command.write_file:type_name -> quarry.node.v1.WriteFile
+	16, // 13: quarry.node.v1.Command.delete_file:type_name -> quarry.node.v1.DeleteFile
+	19, // 14: quarry.node.v1.Event.console:type_name -> quarry.node.v1.ConsoleLine
+	20, // 15: quarry.node.v1.Event.stats:type_name -> quarry.node.v1.ServerStats
+	21, // 16: quarry.node.v1.Event.status:type_name -> quarry.node.v1.StatusChange
+	22, // 17: quarry.node.v1.Event.install_progress:type_name -> quarry.node.v1.InstallProgress
+	0,  // 18: quarry.node.v1.NodeAgentService.RegisterNode:input_type -> quarry.node.v1.RegisterNodeRequest
+	3,  // 19: quarry.node.v1.NodeAgentService.Heartbeat:input_type -> quarry.node.v1.HeartbeatRequest
+	6,  // 20: quarry.node.v1.NodeAgentService.Channel:input_type -> quarry.node.v1.ChannelRequest
+	1,  // 21: quarry.node.v1.NodeAgentService.RegisterNode:output_type -> quarry.node.v1.RegisterNodeResponse
+	4,  // 22: quarry.node.v1.NodeAgentService.Heartbeat:output_type -> quarry.node.v1.HeartbeatResponse
+	5,  // 23: quarry.node.v1.NodeAgentService.Channel:output_type -> quarry.node.v1.ChannelResponse
+	21, // [21:24] is the sub-list for method output_type
+	18, // [18:21] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_quarry_node_v1_nodes_proto_init() }
@@ -413,13 +1953,34 @@ func file_quarry_node_v1_nodes_proto_init() {
 	if File_quarry_node_v1_nodes_proto != nil {
 		return
 	}
+	file_quarry_node_v1_nodes_proto_msgTypes[6].OneofWrappers = []any{
+		(*ChannelRequest_Event)(nil),
+		(*ChannelRequest_Result)(nil),
+	}
+	file_quarry_node_v1_nodes_proto_msgTypes[7].OneofWrappers = []any{
+		(*Command_InstallServer)(nil),
+		(*Command_StartServer)(nil),
+		(*Command_StopServer)(nil),
+		(*Command_KillServer)(nil),
+		(*Command_SendCommand)(nil),
+		(*Command_ListFiles)(nil),
+		(*Command_ReadFile)(nil),
+		(*Command_WriteFile)(nil),
+		(*Command_DeleteFile)(nil),
+	}
+	file_quarry_node_v1_nodes_proto_msgTypes[18].OneofWrappers = []any{
+		(*Event_Console)(nil),
+		(*Event_Stats)(nil),
+		(*Event_Status)(nil),
+		(*Event_InstallProgress)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_quarry_node_v1_nodes_proto_rawDesc), len(file_quarry_node_v1_nodes_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

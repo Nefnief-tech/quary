@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	NodeAgentService_RegisterNode_FullMethodName = "/quarry.node.v1.NodeAgentService/RegisterNode"
 	NodeAgentService_Heartbeat_FullMethodName    = "/quarry.node.v1.NodeAgentService/Heartbeat"
+	NodeAgentService_Channel_FullMethodName      = "/quarry.node.v1.NodeAgentService/Channel"
 )
 
 // NodeAgentServiceClient is the client API for NodeAgentService service.
@@ -43,6 +44,10 @@ type NodeAgentServiceClient interface {
 	// every ~10 seconds; the panel acks each beat (later: carrying desired
 	// configuration and reload hints).
 	Heartbeat(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[HeartbeatRequest, HeartbeatResponse], error)
+	// Channel is the long-lived bidirectional command stream. The daemon opens
+	// it after enrolling; the panel pushes server commands down it, the daemon
+	// streams events (console, stats, status) and command results back.
+	Channel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChannelRequest, ChannelResponse], error)
 }
 
 type nodeAgentServiceClient struct {
@@ -76,6 +81,19 @@ func (c *nodeAgentServiceClient) Heartbeat(ctx context.Context, opts ...grpc.Cal
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NodeAgentService_HeartbeatClient = grpc.BidiStreamingClient[HeartbeatRequest, HeartbeatResponse]
 
+func (c *nodeAgentServiceClient) Channel(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChannelRequest, ChannelResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NodeAgentService_ServiceDesc.Streams[1], NodeAgentService_Channel_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ChannelRequest, ChannelResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NodeAgentService_ChannelClient = grpc.BidiStreamingClient[ChannelRequest, ChannelResponse]
+
 // NodeAgentServiceServer is the server API for NodeAgentService service.
 // All implementations must embed UnimplementedNodeAgentServiceServer
 // for forward compatibility.
@@ -93,6 +111,10 @@ type NodeAgentServiceServer interface {
 	// every ~10 seconds; the panel acks each beat (later: carrying desired
 	// configuration and reload hints).
 	Heartbeat(grpc.BidiStreamingServer[HeartbeatRequest, HeartbeatResponse]) error
+	// Channel is the long-lived bidirectional command stream. The daemon opens
+	// it after enrolling; the panel pushes server commands down it, the daemon
+	// streams events (console, stats, status) and command results back.
+	Channel(grpc.BidiStreamingServer[ChannelRequest, ChannelResponse]) error
 	mustEmbedUnimplementedNodeAgentServiceServer()
 }
 
@@ -108,6 +130,9 @@ func (UnimplementedNodeAgentServiceServer) RegisterNode(context.Context, *Regist
 }
 func (UnimplementedNodeAgentServiceServer) Heartbeat(grpc.BidiStreamingServer[HeartbeatRequest, HeartbeatResponse]) error {
 	return status.Error(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedNodeAgentServiceServer) Channel(grpc.BidiStreamingServer[ChannelRequest, ChannelResponse]) error {
+	return status.Error(codes.Unimplemented, "method Channel not implemented")
 }
 func (UnimplementedNodeAgentServiceServer) mustEmbedUnimplementedNodeAgentServiceServer() {}
 func (UnimplementedNodeAgentServiceServer) testEmbeddedByValue()                          {}
@@ -155,6 +180,13 @@ func _NodeAgentService_Heartbeat_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NodeAgentService_HeartbeatServer = grpc.BidiStreamingServer[HeartbeatRequest, HeartbeatResponse]
 
+func _NodeAgentService_Channel_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NodeAgentServiceServer).Channel(&grpc.GenericServerStream[ChannelRequest, ChannelResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NodeAgentService_ChannelServer = grpc.BidiStreamingServer[ChannelRequest, ChannelResponse]
+
 // NodeAgentService_ServiceDesc is the grpc.ServiceDesc for NodeAgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -171,6 +203,12 @@ var NodeAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Heartbeat",
 			Handler:       _NodeAgentService_Heartbeat_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "Channel",
+			Handler:       _NodeAgentService_Channel_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

@@ -83,6 +83,15 @@ type RolePermission struct {
 	Permission string    `json:"permission"`
 }
 
+type RunnerVersion struct {
+	Runner      string     `json:"runner"`
+	McVersion   string     `json:"mc_version"`
+	Stable      bool       `json:"stable"`
+	JavaVersion int32      `json:"java_version"`
+	PublishedAt *time.Time `json:"published_at"`
+	RefreshedAt time.Time  `json:"refreshed_at"`
+}
+
 type Server struct {
 	ID           uuid.UUID `json:"id"`
 	Name         string    `json:"name"`

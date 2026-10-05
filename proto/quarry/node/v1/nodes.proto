@@ -20,6 +20,11 @@ service NodeAgentService {
   // every ~10 seconds; the panel acks each beat (later: carrying desired
   // configuration and reload hints).
   rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+
+  // Channel is the long-lived bidirectional command stream. The daemon opens
+  // it after enrolling; the panel pushes server commands down it, the daemon
+  // streams events (console, stats, status) and command results back.
+  rpc Channel(stream ChannelRequest) returns (stream ChannelResponse);
 }
 
 message RegisterNodeRequest {
@@ -62,4 +67,156 @@ message HeartbeatRequest {
 message HeartbeatResponse {
   // Milliseconds since the Unix epoch, per the panel's clock.
   int64 server_time_unix_milli = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Channel: commands (panel → daemon) and events/results (daemon → panel).
+// ---------------------------------------------------------------------------
+
+// NodeDownstream carries a panel command to the daemon.
+message ChannelResponse {
+  Command command = 1;
+}
+
+// NodeUpstream carries events and command results back to the panel.
+message ChannelRequest {
+  oneof payload {
+    Event event = 1;
+    CommandResult result = 2;
+  }
+}
+
+// Command is one instruction from the panel to the daemon. Every command
+// carries a correlation id echoed back in CommandResult.
+message Command {
+  string correlation_id = 1;
+  oneof action {
+    InstallServer install_server = 2;
+    StartServer start_server = 3;
+    StopServer stop_server = 4;
+    KillServer kill_server = 5;
+    SendCommand send_command = 6;
+    ListFiles list_files = 7;
+    ReadFile read_file = 8;
+    WriteFile write_file = 9;
+    DeleteFile delete_file = 10;
+  }
+}
+
+message InstallServer {
+  string server_id = 1;
+  string runner = 2;
+  string mc_version = 3;
+  // Where to fetch the artifact (checksum-verified by the daemon).
+  string artifact_url = 4;
+  string artifact_sha256 = 5;
+  string artifact_name = 6;
+  // Docker image to use for the run phase.
+  string image = 7;
+  // Launch command executed in the container (argv).
+  repeated string launch = 8;
+  // Memory limit in MiB.
+  int32 memory_mb = 9;
+  // Allocated address the server should bind inside the container.
+  string bind_ip = 10;
+  int32 bind_port = 11;
+}
+
+message StartServer {
+  string server_id = 1;
+  string image = 2;
+  repeated string launch = 3;
+  int32 memory_mb = 4;
+  int32 cpu_percent = 5; // 100 = one core
+  string bind_ip = 6;
+  int32 bind_port = 7;
+}
+
+message StopServer {
+  string server_id = 1;
+  // Seconds to wait after the graceful console stop before killing.
+  int32 timeout_seconds = 2;
+}
+
+message KillServer {
+  string server_id = 1;
+}
+
+message SendCommand {
+  string server_id = 1;
+  string input = 2;
+}
+
+message ListFiles {
+  string server_id = 1;
+  // Path relative to the server's data directory.
+  string path = 2;
+}
+
+message ReadFile {
+  string server_id = 1;
+  string path = 2;
+  // Files larger than this are rejected; the web editor is for config files.
+  int32 max_bytes = 3;
+}
+
+message WriteFile {
+  string server_id = 1;
+  string path = 2;
+  bytes content = 3;
+  bool create_dirs = 4;
+}
+
+message DeleteFile {
+  string server_id = 1;
+  string path = 2;
+  bool recursive = 3;
+}
+
+// CommandResult is the terminal response for a correlation id. Payloads are
+// encoded per-command as JSON in `body` to keep the surface small; typed
+// messages arrive as streaming Events.
+message CommandResult {
+  string correlation_id = 1;
+  bool ok = 2;
+  string error = 3;
+  bytes body = 4;
+}
+
+message Event {
+  string server_id = 1;
+  oneof payload {
+    ConsoleLine console = 2;
+    ServerStats stats = 3;
+    StatusChange status = 4;
+    InstallProgress install_progress = 5;
+  }
+}
+
+message ConsoleLine {
+  // Milliseconds since the Unix epoch, per the daemon's clock.
+  int64 at_unix_milli = 1;
+  string line = 2;
+  // stdin echoes are flagged so the UI can style them.
+  bool from_stdin = 3;
+}
+
+message ServerStats {
+  double cpu_percent = 1;
+  double memory_used_mb = 2;
+  double memory_limit_mb = 3;
+  double disk_used_mb = 4;
+  double network_rx_bytes_per_sec = 5;
+  double network_tx_bytes_per_sec = 6;
+}
+
+message StatusChange {
+  string status = 1; // installing | offline | starting | running | stopping | crashed
+  string detail = 2;
+}
+
+message InstallProgress {
+  string step = 1;
+  double percent = 2;
+  string detail = 3;
 }

@@ -7,17 +7,16 @@ import (
 	"testing"
 )
 
-// checkWith runs check against a canned resolver answering with ips.
+// checkWith runs a Guard check against a canned resolver answering with ips.
 func checkWith(url string, ips ...net.IP) error {
-	return check(context.Background(), &policy{
-		lookupIP: func(ctx context.Context, host string) ([]net.IPAddr, error) {
-			out := make([]net.IPAddr, 0, len(ips))
-			for _, ip := range ips {
-				out = append(out, net.IPAddr{IP: ip})
-			}
-			return out, nil
-		},
-	}, url)
+	g := &Guard{lookupIP: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		out := make([]net.IPAddr, 0, len(ips))
+		for _, ip := range ips {
+			out = append(out, net.IPAddr{IP: ip})
+		}
+		return out, nil
+	}}
+	return g.Check(context.Background(), url)
 }
 
 func TestCheckAllowsPublicAddresses(t *testing.T) {
@@ -78,37 +77,60 @@ func TestCheckSchemeAndHost(t *testing.T) {
 }
 
 func TestCheckLiteralIPs(t *testing.T) {
-	if err := check(context.Background(), &policy{}, "https://127.0.0.1/x"); !errors.Is(err, ErrReserved) {
+	if err := DefaultGuard().Check(context.Background(), "https://127.0.0.1/x"); !errors.Is(err, ErrReserved) {
 		t.Fatalf("literal loopback: err = %v, want ErrReserved", err)
 	}
 	// A public literal IP never touches the resolver, so this passes even
 	// though the canned lookup is not consulted.
-	if err := check(context.Background(), &policy{}, "https://93.184.216.34/x"); err != nil {
+	if err := DefaultGuard().Check(context.Background(), "https://93.184.216.34/x"); err != nil {
 		t.Fatalf("literal public IP: %v", err)
 	}
 }
 
 func TestCheckRejectsLiteralReservedIPBeforeLookup(t *testing.T) {
-	if err := check(context.Background(), &policy{}, "https://169.254.169.254/latest/meta-data"); !errors.Is(err, ErrReserved) {
+	if err := DefaultGuard().Check(context.Background(), "https://169.254.169.254/latest/meta-data"); !errors.Is(err, ErrReserved) {
 		t.Fatalf("literal metadata IP: err = %v, want ErrReserved", err)
 	}
 }
 
+func TestGuardAllowlistExemptsMirror(t *testing.T) {
+	g, err := NewGuard([]string{"10.0.0.0/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Check(context.Background(), "http://10.1.2.3:8080/artifact.jar"); err != nil {
+		t.Fatalf("allowlisted mirror rejected: %v", err)
+	}
+	// Anything outside the allowlist is still rejected.
+	if err := g.Check(context.Background(), "http://192.168.1.1/artifact.jar"); !errors.Is(err, ErrReserved) {
+		t.Fatalf("non-allowlisted private IP: err = %v, want ErrReserved", err)
+	}
+	// The default guard never allows private ranges.
+	if err := DefaultGuard().Check(context.Background(), "http://10.1.2.3/artifact.jar"); !errors.Is(err, ErrReserved) {
+		t.Fatal("default guard must reject private ranges")
+	}
+}
+
+func TestNewGuardRejectsBadCIDR(t *testing.T) {
+	if _, err := NewGuard([]string{"not-a-cidr"}); err == nil {
+		t.Fatal("invalid CIDR accepted")
+	}
+}
+
 func TestReservedCGNATBoundaries(t *testing.T) {
-	if !reserved(net.ParseIP("100.64.0.1")) || !reserved(net.ParseIP("100.127.255.254")) {
+	if !reservedAddress(net.ParseIP("100.64.0.1")) || !reservedAddress(net.ParseIP("100.127.255.254")) {
 		t.Fatal("CGNAT range must be reserved")
 	}
-	if reserved(net.ParseIP("100.63.255.255")) || reserved(net.ParseIP("100.128.0.0")) {
+	if reservedAddress(net.ParseIP("100.63.255.255")) || reservedAddress(net.ParseIP("100.128.0.0")) {
 		t.Fatal("addresses outside CGNAT range must not be reserved")
 	}
 }
 
 func TestCheckLookupFailure(t *testing.T) {
-	err := check(context.Background(), &policy{
-		lookupIP: func(ctx context.Context, host string) ([]net.IPAddr, error) {
-			return nil, errors.New("dns is down")
-		},
-	}, "https://example.com")
+	g := &Guard{lookupIP: func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		return nil, errors.New("dns is down")
+	}}
+	err := g.Check(context.Background(), "https://example.com")
 	if !errors.Is(err, ErrLookup) {
 		t.Fatalf("lookup failure: err = %v, want ErrLookup", err)
 	}
