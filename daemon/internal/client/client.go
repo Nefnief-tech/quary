@@ -46,10 +46,13 @@ func New(cfg config.Config, store *state.Store, log *slog.Logger, manager *serve
 }
 
 // Run keeps the daemon connected until ctx is cancelled, reconnecting with
-// exponential backoff (plus jitter) on every failure.
+// exponential backoff (plus jitter) on every failure. Backoff resets after
+// any connection that lasted a while, so a panel restart costs about a
+// second of disconnection rather than the accumulated maximum.
 func (c *Client) Run(ctx context.Context) error {
 	backoff := time.Second
 	for {
+		connectAt := time.Now()
 		err := c.runOnce(ctx)
 		if ctx.Err() != nil {
 			return nil
@@ -57,6 +60,9 @@ func (c *Client) Run(ctx context.Context) error {
 		if errors.Is(err, errReenrolled) {
 			backoff = time.Second
 			continue
+		}
+		if time.Since(connectAt) > time.Minute {
+			backoff = time.Second
 		}
 		c.log.Warn("connection lost", "err", err, "retrying_in", backoff.String())
 		select {

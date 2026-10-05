@@ -272,7 +272,8 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Reader: inbound text is console input.
+	// Reader: inbound text is console input. If the node channel is briefly
+	// offline (panel restart), retry delivery instead of dropping input.
 	inputDone := make(chan struct{})
 	go func() {
 		defer close(inputDone)
@@ -285,13 +286,32 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 			if len(input) > 1000 {
 				continue
 			}
-			ctx, cancelInput := context.WithTimeout(context.Background(), 10*time.Second)
-			_, _ = s.channels.Send(ctx, nodeID, &nodesv1.Command{
-				Action: &nodesv1.Command_SendCommand{SendCommand: &nodesv1.SendCommand{
-					ServerId: serverID.String(), Input: input,
-				}},
-			})
-			cancelInput()
+			delivered := false
+			var lastErr error
+			for i := 0; i < 20; i++ {
+				ctx, cancelInput := context.WithTimeout(context.Background(), 10*time.Second)
+				_, sendErr := s.channels.Send(ctx, nodeID, &nodesv1.Command{
+					Action: &nodesv1.Command_SendCommand{SendCommand: &nodesv1.SendCommand{
+						ServerId: serverID.String(), Input: input,
+					}},
+				})
+				cancelInput()
+				if sendErr == nil {
+					delivered = true
+					break
+				}
+				lastErr = sendErr
+				if !errors.Is(sendErr, nodes.ErrNodeOffline) {
+					break
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
+			if !delivered {
+				_ = sendJSON(map[string]any{
+					"type":    "error",
+					"message": "command not delivered: " + lastErr.Error(),
+				})
+			}
 		}
 	}()
 

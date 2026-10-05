@@ -25,6 +25,9 @@
 	let term: import('@xterm/xterm').Terminal | null = null;
 	let fit: import('@xterm/addon-fit').FitAddon | null = null;
 	let resizeObs: ResizeObserver | null = null;
+	let destroyed = false;
+	let wsRetry = 0;
+	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const statusStyle: Record<string, string> = {
 		running: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
@@ -94,9 +97,6 @@
 		server = await api.get<Server>(`/api/v1/servers/${id}`);
 		loadFiles('');
 
-		const t = await api.get<{ token: string; scrollback: string[] }>(
-			`/api/v1/servers/${id}/console/token`
-		);
 		if (consoleEl) {
 			const { Terminal } = await import('@xterm/xterm');
 			const { FitAddon } = await import('@xterm/addon-fit');
@@ -119,31 +119,71 @@
 			fit.fit();
 			resizeObs = new ResizeObserver(() => fit?.fit());
 			resizeObs.observe(consoleEl);
-			for (const line of t.scrollback ?? []) term.writeln(line);
 		}
 
-		const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-		wsState = 'connecting';
-		ws = new WebSocket(`${proto}://${location.host}/api/v1/servers/${id}/console?token=${t.token}`);
-		ws.onopen = () => (wsState = 'live');
-		ws.onclose = () => (wsState = 'down');
-		ws.onerror = () => (wsState = 'down');
-		ws.onmessage = (ev) => {
-			const frame = JSON.parse(ev.data);
-			if (frame.type === 'console') {
-				term?.writeln(frame.line as string);
-			} else if (frame.type === 'status') {
-				if (server) server = { ...server, status: frame.status };
-				statusDetail = frame.detail ?? '';
-			} else if (frame.type === 'stats' && frame.stats) {
-				stats = frame.stats;
-			} else if (frame.type === 'install') {
-				statusDetail = `install: ${frame.step} ${Math.round(frame.percent ?? 0)}%`;
-			}
-		};
+		connectConsole();
 	});
 
+	// connectConsole mints a fresh token and opens the console WebSocket.
+	// On drop it retries with capped backoff so panel/daemon restarts heal
+	// without user action; each reconnect replays fresh scrollback.
+	async function connectConsole() {
+		if (destroyed) return;
+		wsState = 'connecting';
+		wsRetry = Math.min(wsRetry + 1, 5);
+		try {
+			const t = await api.get<{ token: string; scrollback: string[] }>(
+				`/api/v1/servers/${id}/console/token`
+			);
+			const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+			const sock = new WebSocket(
+				`${proto}://${location.host}/api/v1/servers/${id}/console?token=${t.token}`
+			);
+			ws = sock;
+			sock.onopen = () => {
+				wsState = 'live';
+				wsRetry = 0;
+				// Fresh connection: replay the hub's scrollback once.
+				term?.writeln('');
+				term?.writeln(`— connected —`);
+				for (const line of t.scrollback ?? []) term?.writeln(line);
+			};
+			sock.onclose = () => {
+				if (ws === sock) {
+					wsState = 'down';
+					ws = null;
+					scheduleReconnect();
+				}
+			};
+			sock.onerror = () => {};
+			sock.onmessage = (ev) => {
+				const frame = JSON.parse(ev.data);
+				if (frame.type === 'console') {
+					term?.writeln(frame.line as string);
+				} else if (frame.type === 'status') {
+					if (server) server = { ...server, status: frame.status };
+					statusDetail = frame.detail ?? '';
+				} else if (frame.type === 'stats' && frame.stats) {
+					stats = frame.stats;
+				} else if (frame.type === 'install') {
+					statusDetail = `install: ${frame.step} ${Math.round(frame.percent ?? 0)}%`;
+				}
+			};
+		} catch {
+			wsState = 'down';
+			scheduleReconnect();
+		}
+	}
+
+	function scheduleReconnect() {
+		if (destroyed) return;
+		const delay = Math.min(1000 * 2 ** wsRetry, 10000);
+		reconnectTimer = setTimeout(connectConsole, delay);
+	}
+
 	onDestroy(() => {
+		destroyed = true;
+		clearTimeout(reconnectTimer);
 		resizeObs?.disconnect();
 		ws?.close();
 		term?.dispose();
@@ -151,9 +191,19 @@
 
 	async function sendLine(e: SubmitEvent) {
 		e.preventDefault();
-		if (!inputLine || !ws || ws.readyState !== WebSocket.OPEN) return;
+		if (!inputLine) return;
+		if (!ws || ws.readyState !== WebSocket.OPEN) {
+			error = 'console is not connected — retrying automatically…';
+			scheduleReconnect();
+			return;
+		}
 		ws.send(inputLine);
 		inputLine = '';
+		error = '';
+	}
+
+	function clearConsole() {
+		term?.clear();
 	}
 </script>
 
@@ -250,29 +300,49 @@
 		{#if tab === 'console'}
 			<span class="ml-auto flex items-center gap-2 text-xs text-slate-500">
 				<span
-					class={`h-2 w-2 rounded-full ${wsState === 'live' ? 'animate-pulse bg-emerald-400' : wsState === 'connecting' ? 'bg-amber-400' : 'bg-rose-500'}`}
+					class={`h-2 w-2 rounded-full ${wsState === 'live' ? 'animate-pulse bg-emerald-400' : wsState === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-rose-500'}`}
 				></span>
-				{wsState === 'live' ? 'live' : wsState === 'connecting' ? 'connecting…' : 'disconnected'}
+				{wsState === 'live'
+					? 'live'
+					: wsState === 'connecting'
+						? 'connecting…'
+						: 'reconnecting…'}
 			</span>
 		{/if}
 	</div>
 
 	{#if tab === 'console'}
 		<div class="overflow-hidden rounded-xl border border-slate-800">
+			<div
+				class="flex items-center justify-between border-b border-slate-800 bg-slate-900/80 px-3 py-1.5"
+			>
+				<span class="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
+					{server.name} — console
+				</span>
+				<button
+					class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"
+					onclick={() => clearConsole()}
+				>
+					clear
+				</button>
+			</div>
 			<div bind:this={consoleEl} class="h-[26rem] w-full bg-slate-950 p-2"></div>
 			<form
 				onsubmit={sendLine}
 				class="flex items-center gap-2 border-t border-slate-800 bg-slate-900/80 px-3 py-2.5"
 			>
-				<span class="font-mono text-sm text-emerald-400">$</span>
+				<span class="font-mono text-sm {wsState === 'live' ? 'text-emerald-400' : 'text-slate-600'}">$</span>
 				<input
 					class="flex-1 bg-transparent font-mono text-sm text-slate-100 outline-none placeholder:text-slate-600"
-					placeholder="type a server command — e.g. list, say hello, time set day"
+					placeholder={wsState === 'live'
+						? 'type a server command — e.g. list, say hello, time set day'
+						: 'console reconnecting…'}
 					bind:value={inputLine}
 				/>
 				<button
 					type="submit"
-					class="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
+					disabled={wsState !== 'live' || !inputLine}
+					class="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
 				>
 					Send ⏎
 				</button>
