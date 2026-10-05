@@ -103,6 +103,8 @@ func (c *Client) runChannel(ctx context.Context, api nodesv1.NodeAgentServiceCli
 
 	// Adopt containers left running by a previous daemon instance.
 	c.manager.Reconcile(ctx, em)
+	// Restart playit tunnel agents whose secrets survived the restart.
+	go c.playit.Reconcile(context.Background())
 
 	for {
 		msg, err := stream.Recv()
@@ -158,6 +160,32 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		}
 		*body = raw
 		return nil
+	case *nodesv1.Command_ExposeStart:
+		serverID, err := uuid.Parse(action.ExposeStart.GetServerId())
+		if err != nil {
+			return fmt.Errorf("invalid server id: %w", err)
+		}
+		st, err := c.playit.Start(ctx, serverID, em)
+		if err != nil {
+			return err
+		}
+		return marshalBody(st, body)
+	case *nodesv1.Command_ExposeClaim:
+		serverID, err := uuid.Parse(action.ExposeClaim.GetServerId())
+		if err != nil {
+			return fmt.Errorf("invalid server id: %w", err)
+		}
+		st, err := c.playit.Claim(ctx, serverID, em)
+		if err != nil {
+			return err
+		}
+		return marshalBody(st, body)
+	case *nodesv1.Command_ExposeStop:
+		serverID, err := uuid.Parse(action.ExposeStop.GetServerId())
+		if err != nil {
+			return fmt.Errorf("invalid server id: %w", err)
+		}
+		return c.playit.Stop(ctx, serverID, em)
 	case *nodesv1.Command_ListFiles:
 		serverID, path, err := parseFileTarget(action.ListFiles.GetServerId(), action.ListFiles.GetPath())
 		if err != nil {
@@ -210,4 +238,14 @@ func parseFileTarget(serverIDStr, path string) (uuid.UUID, string, error) {
 		path = "."
 	}
 	return id, path, nil
+}
+
+// marshalBody encodes a command result payload.
+func marshalBody(v any, body *[]byte) error {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	*body = raw
+	return nil
 }

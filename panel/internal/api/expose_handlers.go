@@ -2,23 +2,49 @@
 package api
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
+	"regexp"
+	"strings"
 
 	"quarry.dev/quarry/panel/internal/audit"
+	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/servers"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
-// exposeInstall installs the playit.gg companion plugin. After the next
-// server start the plugin prints a claim URL on the console; the panel
-// captures it (and the later public address) into the server's expose
-// state, which the UI renders from server.expose.
-func (s *Server) exposeInstall(w http.ResponseWriter, r *http.Request) {
-	sv, loader, contentDir, ok := s.loadPluginServer(w, r)
+// Public exposure via the playit.gg tunnel agent: the panel drives the
+// daemon's claim flow (start, check claim, stop) and persists the state on
+// the server config so the UI can render it.
+
+// exposeAddressRe validates a user-entered public address (the tunnel
+// domain playit assigns, e.g. slow-purple-tiger.playit.gg).
+var exposeAddressRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
+
+// sendExpose runs an expose command on the node and returns its result.
+func (s *Server) sendExpose(w http.ResponseWriter, r *http.Request, sv gen.Server, cmd *nodesv1.Command) (*nodesv1.CommandResult, bool) {
+	result, err := s.channels.Send(r.Context(), sv.NodeID, cmd)
+	if err != nil {
+		if errors.Is(err, nodes.ErrNodeOffline) {
+			apiError(w, http.StatusConflict, "node is offline")
+		} else {
+			apiError(w, http.StatusBadGateway, "node error: "+err.Error())
+		}
+		return nil, false
+	}
+	if !result.GetOk() {
+		apiError(w, http.StatusInternalServerError, result.GetError())
+		return nil, false
+	}
+	return result, true
+}
+
+// exposeStart begins the tunnel setup: generates a claim URL (or confirms
+// an active tunnel).
+func (s *Server) exposeStart(w http.ResponseWriter, r *http.Request) {
+	sv, ok := s.loadServer(w, r)
 	if !ok {
 		return
 	}
@@ -26,46 +52,142 @@ func (s *Server) exposeInstall(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusConflict, "node is offline")
 		return
 	}
-	dl, err := s.modrinth.Resolve(r.Context(), servers.PlayitProject, sv.McVersion, loader)
-	if err != nil {
-		apiError(w, http.StatusConflict, "no playit.gg build for "+sv.Runner+" "+sv.McVersion+": "+err.Error())
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-	defer cancel()
-	result, err := s.channels.Send(ctx, sv.NodeID, &nodesv1.Command{
-		Action: &nodesv1.Command_InstallPlugin{InstallPlugin: &nodesv1.InstallPlugin{
+	result, ok := s.sendExpose(w, r, sv, &nodesv1.Command{
+		Action: &nodesv1.Command_ExposeStart{ExposeStart: &nodesv1.ExposeStart{
 			ServerId: sv.ID.String(),
-			Url:      dl.URL,
-			Sha512:   dl.SHA512,
-			Filename: contentDir + "/" + servers.PlayitFilename,
 		}},
 	})
-	if err != nil {
-		if errors.Is(err, nodes.ErrNodeOffline) {
-			apiError(w, http.StatusConflict, "node is offline")
-			return
-		}
-		apiError(w, http.StatusBadGateway, "install failed: "+err.Error())
+	if !ok {
 		return
 	}
-	if !result.GetOk() {
-		apiError(w, http.StatusInternalServerError, result.GetError())
+	var st struct {
+		Active   bool   `json:"active"`
+		ClaimURL string `json:"claim_url"`
+	}
+	if err := json.Unmarshal(result.GetBody(), &st); err != nil {
+		apiError(w, http.StatusBadGateway, "unexpected daemon reply")
 		return
 	}
-	if err := s.serverSvc.MarkExposeInstalled(r.Context(), sv.ID); err != nil {
-		apiError(w, http.StatusInternalServerError, "installed but state not saved")
+
+	ex := &servers.ExposeConfig{}
+	switch {
+	case st.Active:
+		ex.Active = true
+	case st.ClaimURL != "":
+		ex.Pending = true
+		ex.ClaimURL = st.ClaimURL
+	}
+	if err := s.serverSvc.SetExpose(r.Context(), sv.ID, ex); err != nil {
+		apiError(w, http.StatusInternalServerError, "setup started but state not saved")
 		return
 	}
 	s.auditLog.Record(r.Context(), audit.Entry{
-		Actor: audit.ActorUser, Action: "server.expose_installed",
-		UserID: actorID(r), ResourceType: "server", ResourceID: sv.ID.String(),
-		IP: clientIP(r), Metadata: map[string]any{"version": dl.Version},
+		Actor: audit.ActorUser, Action: "server.expose_started",
+		UserID: actorID(r), ResourceType: "server", ResourceID: sv.ID.String(), IP: clientIP(r),
 	})
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "installed",
-		"hint":   "restart the server, then open the claim link shown here to activate the tunnel",
+	writeJSON(w, http.StatusOK, map[string]any{"expose": ex})
+}
+
+// exposeClaim checks whether the user completed the browser claim and, if
+// so, starts the tunnel agent.
+func (s *Server) exposeClaim(w http.ResponseWriter, r *http.Request) {
+	sv, ok := s.loadServer(w, r)
+	if !ok {
+		return
+	}
+	result, ok := s.sendExpose(w, r, sv, &nodesv1.Command{
+		Action: &nodesv1.Command_ExposeClaim{ExposeClaim: &nodesv1.ExposeClaim{
+			ServerId: sv.ID.String(),
+		}},
 	})
+	if !ok {
+		return
+	}
+	var st struct {
+		Active   bool   `json:"active"`
+		ClaimURL string `json:"claim_url"`
+	}
+	if err := json.Unmarshal(result.GetBody(), &st); err != nil {
+		apiError(w, http.StatusBadGateway, "unexpected daemon reply")
+		return
+	}
+
+	var ex *servers.ExposeConfig
+	if st.Active {
+		ex = &servers.ExposeConfig{Active: true}
+	} else {
+		// Still pending: keep the URL from the current state.
+		var cfg servers.Config
+		_ = json.Unmarshal(sv.Config, &cfg)
+		if cfg.Expose != nil {
+			ex = cfg.Expose
+		} else {
+			ex = &servers.ExposeConfig{Pending: true}
+		}
+	}
+	if err := s.serverSvc.SetExpose(r.Context(), sv.ID, ex); err != nil {
+		apiError(w, http.StatusInternalServerError, "state not saved")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"expose": ex})
+}
+
+// exposeStop removes the tunnel and forgets the claim state.
+func (s *Server) exposeStop(w http.ResponseWriter, r *http.Request) {
+	sv, ok := s.loadServer(w, r)
+	if !ok {
+		return
+	}
+	if _, ok := s.sendExpose(w, r, sv, &nodesv1.Command{
+		Action: &nodesv1.Command_ExposeStop{ExposeStop: &nodesv1.ExposeStop{
+			ServerId: sv.ID.String(),
+		}},
+	}); !ok {
+		return
+	}
+	if err := s.serverSvc.SetExpose(r.Context(), sv.ID, nil); err != nil {
+		apiError(w, http.StatusInternalServerError, "state not saved")
+		return
+	}
+	s.auditLog.Record(r.Context(), audit.Entry{
+		Actor: audit.ActorUser, Action: "server.expose_stopped",
+		UserID: actorID(r), ResourceType: "server", ResourceID: sv.ID.String(), IP: clientIP(r),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"expose": nil})
+}
+
+type exposeAddressRequest struct {
+	Address string `json:"address"`
+}
+
+// exposeAddress records the public tunnel address (assigned in the playit
+// dashboard) for display.
+func (s *Server) exposeAddress(w http.ResponseWriter, r *http.Request) {
+	sv, ok := s.loadServer(w, r)
+	if !ok {
+		return
+	}
+	req, ok := decode[exposeAddressRequest](w, r)
+	if !ok {
+		return
+	}
+	addr := strings.Trim(strings.TrimSpace(req.Address), "/")
+	if !exposeAddressRe.MatchString(addr) {
+		apiError(w, http.StatusBadRequest, "invalid address (expected e.g. my-tunnel.playit.gg)")
+		return
+	}
+	var cfg servers.Config
+	_ = json.Unmarshal(sv.Config, &cfg)
+	ex := &servers.ExposeConfig{Active: true, Address: addr}
+	if cfg.Expose != nil {
+		ex.ClaimURL = cfg.Expose.ClaimURL
+		ex.Pending = cfg.Expose.Pending
+	}
+	if err := s.serverSvc.SetExpose(r.Context(), sv.ID, ex); err != nil {
+		apiError(w, http.StatusInternalServerError, "state not saved")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"expose": ex})
 }
 
 // switchVersionRequest is the version-switch input.

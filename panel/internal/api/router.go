@@ -73,9 +73,12 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("DELETE /api/v1/servers/{id}/whitelist", s.requirePerm("console.write", http.HandlerFunc(s.whitelistRemove)))
 	mux.Handle("POST /api/v1/servers/{id}/whitelist/toggle", s.requirePerm("console.write", http.HandlerFunc(s.whitelistToggle)))
 
-	// Version switch + public exposure (playit.gg)
+	// Version switch + public exposure (playit.gg tunnel agent)
 	mux.Handle("POST /api/v1/servers/{id}/version", s.requireAuth(http.HandlerFunc(s.switchVersion)))
-	mux.Handle("POST /api/v1/servers/{id}/expose", s.requirePerm("plugin.install", http.HandlerFunc(s.exposeInstall)))
+	mux.Handle("POST /api/v1/servers/{id}/expose", s.requirePerm("plugin.install", http.HandlerFunc(s.exposeStart)))
+	mux.Handle("POST /api/v1/servers/{id}/expose/claim", s.requirePerm("plugin.install", http.HandlerFunc(s.exposeClaim)))
+	mux.Handle("POST /api/v1/servers/{id}/expose/address", s.requirePerm("plugin.install", http.HandlerFunc(s.exposeAddress)))
+	mux.Handle("DELETE /api/v1/servers/{id}/expose", s.requirePerm("plugin.install", http.HandlerFunc(s.exposeStop)))
 
 	// Server files
 	mux.Handle("GET /api/v1/servers/{id}/files", s.requirePerm("file.read", http.HandlerFunc(s.listServerFiles)))

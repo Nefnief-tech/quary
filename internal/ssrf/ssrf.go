@@ -9,11 +9,15 @@ package ssrf
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	neturl "net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -180,4 +184,49 @@ func NewHTTPClient() *http.Client {
 
 func DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	return DefaultGuard().DialContext(ctx, network, addr)
+}
+
+// DownloadFile fetches url through the guard into dest, verifies the
+// sha256 hex checksum, and lands the file atomically. Used for
+// version-pinned auxiliary binaries (e.g. tunnel agents); downloading
+// without a pinned checksum is refused.
+func (g *Guard) DownloadFile(ctx context.Context, url, dest, wantSHA256 string) error {
+	if wantSHA256 == "" {
+		return errors.New("refusing to download without a pinned checksum")
+	}
+	if err := g.Check(ctx, url); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := g.HTTPClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
+	}
+
+	tmp := dest + ".download"
+	out, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	hash := sha256.New()
+	_, err = io.Copy(io.MultiWriter(out, hash), resp.Body)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != strings.ToLower(wantSHA256) {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("checksum mismatch (got %s, want %s)", got, wantSHA256)
+	}
+	return os.Rename(tmp, dest)
 }

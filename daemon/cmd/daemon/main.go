@@ -12,10 +12,12 @@ import (
 
 	"quarry.dev/quarry/daemon/internal/client"
 	"quarry.dev/quarry/daemon/internal/config"
+	"quarry.dev/quarry/daemon/internal/expose"
 	"quarry.dev/quarry/daemon/internal/logging"
 	"quarry.dev/quarry/daemon/internal/runtime"
 	"quarry.dev/quarry/daemon/internal/servers"
 	"quarry.dev/quarry/daemon/internal/state"
+	"quarry.dev/quarry/internal/ssrf"
 )
 
 func main() {
@@ -59,7 +61,18 @@ func main() {
 		"node", cfg.NodeName,
 		"data_dir", cfg.DataDir,
 	)
-	if err := client.New(cfg, store, log, manager).Run(ctx); err != nil {
+	playitGuard, err := ssrf.NewGuard(cfg.ArtifactAllowCIDRs)
+	if err != nil {
+		log.Error("ssrf guard init failed", "err", err)
+		os.Exit(1)
+	}
+	playit, err := expose.NewManager(expose.Config{DataDir: cfg.DataDir}, rt, playitGuard, log)
+	if err != nil {
+		log.Error("playit manager init failed", "err", err)
+		os.Exit(1)
+	}
+
+	if err := client.New(cfg, store, log, manager, playit).Run(ctx); err != nil {
 		log.Error("daemon failed", "err", err)
 		os.Exit(1)
 	}

@@ -193,15 +193,72 @@
 	// playit.gg expose state
 	let exposeBusy = $state(false);
 	let exposeNote = $state('');
+	let exposeAddrInput = $state('');
 
-	async function installExpose() {
-		if (!confirm('Install the playit.gg companion plugin? After the next start a claim link appears here to make the server public.')) return;
+	function applyExpose(ex: Server['expose']) {
+		if (server) server = { ...server, expose: ex };
+	}
+
+	async function startExpose() {
 		exposeBusy = true;
 		exposeNote = '';
 		try {
-			const res = await api.post<{ hint: string }>(`/api/v1/servers/${id}/expose`, {});
-			if (server) server = { ...server, expose: { installed: true } };
-			exposeNote = res.hint;
+			const res = await api.post<{ expose: Server['expose'] }>(`/api/v1/servers/${id}/expose`, {});
+			applyExpose(res.expose);
+		} catch (err) {
+			exposeNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			exposeBusy = false;
+		}
+	}
+
+	async function checkClaim() {
+		exposeBusy = true;
+		exposeNote = '';
+		try {
+			const res = await api.post<{ expose: Server['expose'] }>(
+				`/api/v1/servers/${id}/expose/claim`,
+				{}
+			);
+			applyExpose(res.expose);
+			if (res.expose?.active) {
+				exposeNote =
+					'Tunnel claimed and agent started. Create the tunnel in your playit dashboard, then save the address it gave you.';
+			} else {
+				exposeNote = 'Not claimed yet — open the claim link first, then try again.';
+			}
+		} catch (err) {
+			exposeNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			exposeBusy = false;
+		}
+	}
+
+	async function stopExpose() {
+		if (!confirm('Stop the tunnel and remove its agent? The public address will stop working.')) return;
+		exposeBusy = true;
+		try {
+			const res = await api.del<{ expose: Server['expose'] }>(`/api/v1/servers/${id}/expose`);
+			applyExpose(res.expose);
+			exposeNote = '';
+		} catch (err) {
+			exposeNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			exposeBusy = false;
+		}
+	}
+
+	async function saveExposeAddress(e: SubmitEvent) {
+		e.preventDefault();
+		exposeBusy = true;
+		exposeNote = '';
+		try {
+			const res = await api.post<{ expose: Server['expose'] }>(
+				`/api/v1/servers/${id}/expose/address`,
+				{ address: exposeAddrInput }
+			);
+			applyExpose(res.expose);
+			exposeAddrInput = '';
 		} catch (err) {
 			exposeNote = err instanceof Error ? err.message : String(err);
 		} finally {
@@ -1389,34 +1446,58 @@
 
 			<div class="card p-4">
 				<h3 class="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Public access</h3>
-				{#if server.expose?.address}
-					<p class="font-mono text-xs break-all text-emerald-300">{server.expose.address}</p>
-					<p class="mt-1.5 text-[10px] text-zinc-600">Players join via this playit.gg address from anywhere.</p>
-				{:else if server.expose?.claim_url}
+				{#if server.expose?.active}
+					{#if server.expose.address}
+						<p class="font-mono text-xs break-all text-emerald-300">{server.expose.address}</p>
+						<p class="mt-1.5 text-[10px] text-zinc-600">Players join via this playit.gg address from anywhere.</p>
+					{:else}
+						<p class="text-xs text-emerald-300"><i class="ph ph-check-circle"></i> Tunnel active</p>
+						<p class="mt-1.5 text-[10px] text-zinc-600">
+							Find your tunnel's address in the playit dashboard and save it here.
+						</p>
+					{/if}
+					<form class="mt-2 flex items-center gap-1.5" onsubmit={saveExposeAddress}>
+						<input
+							class="input flex-1 py-1 text-xs"
+							placeholder="my-tunnel.playit.gg"
+							bind:value={exposeAddrInput}
+						/>
+						<button type="submit" disabled={exposeBusy} class="btn btn-secondary px-2.5 py-1 text-xs">Save</button>
+					</form>
+					<button
+						class="mt-2 text-[11px] text-zinc-600 transition hover:text-rose-300"
+						disabled={exposeBusy}
+						onclick={stopExpose}
+					>
+						<i class="ph ph-plug"></i> Stop tunnel
+					</button>
+				{:else if server.expose?.pending && server.expose.claim_url}
 					<a
 						href={server.expose.claim_url}
 						target="_blank"
 						rel="noreferrer"
 						class="text-xs break-all text-amber-300 transition hover:text-amber-200"
 					>
-						Claim the tunnel: {server.expose.claim_url}
+						<i class="ph ph-link-simple-break"></i> Claim the tunnel
 					</a>
 					<p class="mt-1.5 text-[10px] text-zinc-600">
-						Open the link, sign in to playit.gg, and the public address appears here.
+						Open the link, sign in to playit.gg, add a TCP tunnel pointing at
+						<span class="font-mono text-zinc-500">127.0.0.1:{server.port}</span>, then come back and check.
 					</p>
-				{:else if server.expose?.installed}
-					<p class="text-xs text-zinc-400">
-						Plugin installed. Restart the server; the claim link then appears here.
-					</p>
-				{:else if hasMarket}
-					<button class="btn btn-secondary w-full px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={installExpose}>
-						<i class="ph ph-globe-hemisphere-west"></i> {exposeBusy ? 'Installing' : 'Expose via playit.gg'}
+					<button
+						class="btn btn-secondary mt-2 w-full px-3 py-1.5 text-xs"
+						disabled={exposeBusy}
+						onclick={checkClaim}
+					>
+						{exposeBusy ? 'Checking…' : 'I claimed it — check'}
+					</button>
+				{:else}
+					<button class="btn btn-secondary w-full px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startExpose}>
+						<i class="ph ph-globe-hemisphere-west"></i> {exposeBusy ? 'Setting up…' : 'Expose via playit.gg'}
 					</button>
 					<p class="mt-1.5 text-[10px] text-zinc-600">
-						Free tunnel: players join without port forwarding.
+						Free public tunnel on any Minecraft version — no port forwarding, works on every runner.
 					</p>
-				{:else}
-					<p class="text-[10px] text-zinc-600">Available on Paper and Fabric servers.</p>
 				{/if}
 				{#if exposeNote}
 					<p class="mt-2 text-[10px] text-zinc-500">{exposeNote}</p>

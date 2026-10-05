@@ -67,30 +67,21 @@ type MapConfig struct {
 	Version string `json:"version,omitempty"`
 }
 
-// ExposeConfig is the playit.gg companion plugin state.
+// ExposeConfig is the playit.gg tunnel state: pending while the claim is
+// open, active once the agent runs on the node.
 type ExposeConfig struct {
-	Installed bool   `json:"installed"`
-	ClaimURL  string `json:"claim_url,omitempty"`
-	Address   string `json:"address,omitempty"`
+	Pending  bool   `json:"pending,omitempty"`
+	Active   bool   `json:"active,omitempty"`
+	ClaimURL string `json:"claim_url,omitempty"`
+	Address  string `json:"address,omitempty"`
 }
 
-// Fixed extra filenames: the daemon removes older versioned variants of a
-// fixed-name jar, so version switches replace instead of accumulate.
+// Fixed extra filename: the daemon removes older versioned variants, so
+// version switches replace instead of accumulate.
 const bluemapFilename = "bluemap.jar"
-const playitFilename = "playit-companion.jar"
 
-// playitProject is the Playit Companion Modrinth slug (official playit.gg
-// plugin; prints a claim URL on the console after install).
-const playitProject = "playit-companion"
-
-// PlayitProject and PlayitFilename are used by the expose install handler.
-const (
-	PlayitProject  = playitProject
-	PlayitFilename = playitFilename
-)
-
-// MarkExposeInstalled records that the playit companion plugin landed.
-func (s *Service) MarkExposeInstalled(ctx context.Context, serverID uuid.UUID) error {
+// SetExpose overwrites the server's tunnel state (nil clears it).
+func (s *Service) SetExpose(ctx context.Context, serverID uuid.UUID, ex *ExposeConfig) error {
 	sv, err := s.q.GetServer(ctx, serverID)
 	if err != nil {
 		return err
@@ -99,10 +90,7 @@ func (s *Service) MarkExposeInstalled(ctx context.Context, serverID uuid.UUID) e
 	if err := json.Unmarshal(sv.Config, &cfg); err != nil {
 		cfg = Config{}
 	}
-	if cfg.Expose == nil {
-		cfg.Expose = &ExposeConfig{}
-	}
-	cfg.Expose.Installed = true
+	cfg.Expose = ex
 	return s.q.UpdateServerConfig(ctx, gen.UpdateServerConfigParams{
 		ID: serverID, Config: mustJSON(cfg),
 	})
@@ -456,8 +444,8 @@ func (s *Service) SwitchVersion(ctx context.Context, sv gen.Server, req SwitchVe
 	return updated, notes, nil
 }
 
-// watchExpose tracks the playit.gg companion plugin's console output: the
-// claim link after install and the public tunnel address once claimed.
+// watchExpose tracks playit.gg console output: claim links from the setup
+// flow and the public tunnel address once the agent reports it.
 func (s *Service) watchExpose(serverID uuid.UUID, line string) {
 	var claim, addr string
 	if m := claimURLRe.FindString(line); m != "" {
@@ -474,10 +462,11 @@ func (s *Service) watchExpose(serverID uuid.UUID, line string) {
 		return
 	}
 	var cfg Config
-	if err := json.Unmarshal(sv.Config, &cfg); err != nil || cfg.Expose == nil {
-		// No expose record (plugin installed via files, or pre-existing):
-		// start tracking from what the console shows.
-		cfg.Expose = &ExposeConfig{Installed: true}
+	if err := json.Unmarshal(sv.Config, &cfg); err != nil {
+		return
+	}
+	if cfg.Expose == nil {
+		cfg.Expose = &ExposeConfig{Active: true}
 	}
 	changed := false
 	if claim != "" && cfg.Expose.ClaimURL != claim {

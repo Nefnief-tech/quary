@@ -106,7 +106,31 @@ message Command {
     DeleteFile delete_file = 10;
     InstallPlugin install_plugin = 11;
     RunConsole run_console = 12;
+    ExposeStart expose_start = 13;
+    ExposeClaim expose_claim = 14;
+    ExposeStop expose_stop = 15;
   }
+}
+
+// ExposeStart begins the playit.gg tunnel setup for a server: the daemon
+// ensures the version-pinned agent binaries are present and generates a
+// claim URL. Result JSON: {"claim_url":"…","code":"…"}, or {"active":true}
+// when the tunnel is already running.
+message ExposeStart {
+  string server_id = 1;
+}
+
+// ExposeClaim exchanges a claimed code for the agent secret (if the user
+// has completed the browser claim), stores it and starts the agent.
+// Result JSON: {"active":true} on success, {"active":false} while the
+// claim is still pending.
+message ExposeClaim {
+  string server_id = 1;
+}
+
+// ExposeStop halts the server's tunnel agent and forgets its secret.
+message ExposeStop {
+  string server_id = 1;
 }
 
 // RunConsole writes one line to the server console and captures reply lines

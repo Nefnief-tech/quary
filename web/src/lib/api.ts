@@ -25,8 +25,8 @@ export interface Server {
 	map_url?: string;
 	/** Last five minutes of activity samples for the charts. */
 	history?: { t: string; cpu_percent: number; memory_used_mb: number; memory_limit_mb: number; players: number }[];
-	/** playit.gg tunnel plugin state (claim URL, public address). */
-	expose?: { installed: boolean; claim_url?: string; address?: string };
+	/** playit.gg tunnel state: pending (claim open), active (tunnel live). */
+	expose?: { pending?: boolean; active?: boolean; claim_url?: string; address?: string };
 	created_at: string;
 }
 
