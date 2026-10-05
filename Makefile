@@ -30,13 +30,22 @@ migrate: ## Apply database migrations (uses QUARRY_DATABASE_URL)
 proto: ## Regenerate protobuf/gRPC code
 	cd proto && buf generate
 
-dev: ## Bring up the dev stack (postgres + panel + daemon)
+dev: ## Bring up the dev stack (postgres + panel + daemon + web)
 	@if [ ! -f deploy/.env ]; then \
 		passwd=$$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'); \
-		printf 'POSTGRES_DB=quarry\nPOSTGRES_USER=quarry\nPOSTGRES_PASSWORD=%s\nQUARRY_ENROLLMENT_TOKEN=\n' "$$passwd" > deploy/.env; \
+		printf 'POSTGRES_DB=quarry\nPOSTGRES_USER=quarry\nPOSTGRES_PASSWORD=%s\nQUARRY_ENROLLMENT_TOKEN=\nQUARRY_DOCKER_UID=%s\nQUARRY_DOCKER_GID=%s\n' "$$passwd" "$$(id -u)" "$$(id -g)" > deploy/.env; \
 		echo "generated deploy/.env with a random database password"; \
 	fi
+	mkdir -p data/servers data/daemon
 	docker compose --env-file deploy/.env -f deploy/docker-compose.dev.yml up --build
+
+web-dev: ## Run the web UI dev server (proxies /api to the panel)
+	pnpm --dir web run dev
+
+web-build: ## Build the web UI
+	pnpm --dir web install --frozen-lockfile
+	pnpm --dir web run check
+	pnpm --dir web run build
 
 down: ## Tear down the dev stack
 	docker compose --env-file deploy/.env -f deploy/docker-compose.dev.yml down -v

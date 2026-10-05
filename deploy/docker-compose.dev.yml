@@ -38,18 +38,26 @@ services:
     build:
       context: ..
       dockerfile: deploy/daemon.Dockerfile
+    # Run as the host user so sibling Minecraft containers (which inherit
+    # this UID) can write the bind-mounted server directories.
+    user: "${QUARRY_DOCKER_UID:-1000}:${QUARRY_DOCKER_GID:-1000}"
     environment:
       QUARRY_PANEL_ADDR: panel:9010
       QUARRY_NODE_NAME: local-dev
-      QUARRY_DATA_DIR: /var/lib/quarry-daemon
+      QUARRY_DATA_DIR: /state
+      # Host bind paths: sibling containers mount these literal paths, so
+      # they must exist on the docker host (not named volumes).
+      QUARRY_SERVERS_DIR: /servers
+      QUARRY_CONTAINER_UID: ${QUARRY_DOCKER_UID:-1000}
       QUARRY_CA_FILE: /ca/ca.crt
       QUARRY_ENROLLMENT_TOKEN: ${QUARRY_ENROLLMENT_TOKEN:-}
       QUARRY_ENV: dev
     volumes:
-      - daemon-data:/var/lib/quarry-daemon
+      - ../data/daemon:/state
+      - ../data/servers:/servers
       # The panel generates ca.crt here on first boot; the daemon pins it.
       - panel-data:/ca:ro
-      # Container management lands in Phase 1.
+      # Container management.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - panel
@@ -57,4 +65,3 @@ services:
 volumes:
   pgdata:
   panel-data:
-  daemon-data:

@@ -10,21 +10,25 @@ MIT licensed. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design an
 
 ## Status
 
-Phase 0 (foundations) — panel boots, auth works, a daemon can enroll and show as online. UI, runners, and server lifecycle land in Phase 1.
+Phase 1 (MVP) — runners (Vanilla/Paper/Fabric), server lifecycle with live console over WebSocket, stats, file manager, and a SvelteKit UI. Create a Paper server in the browser, watch it boot in the console, run commands, and stop it cleanly.
 
 ## Development
 
-Requirements: Go 1.26+, Docker, Node 22+ (web UI lands in Phase 1), make.
+Requirements: Go 1.26+, Docker, Node 22+ with pnpm, make.
 
 ```sh
-cp deploy/.env.example deploy/.env   # placeholders are fine for local dev
-make dev                             # postgres + panel + daemon
+make dev       # postgres + panel + daemon (API on :8080, gRPC on :9010)
+make web-dev   # SvelteKit UI on :5173 (proxies /api to the panel)
 ```
 
-Panel API on http://localhost:8080, gRPC on :9010. Bootstrap the first admin:
+Bootstrap on first boot:
 
-```sh
-curl -s localhost:8080/api/v1/auth/register -d '{"username":"admin","password":"…"}'
-```
+1. Open http://localhost:5173 and register the first user (it becomes the admin), or:
+   `curl -s localhost:8080/api/v1/auth/register -d '{"username":"admin","password":"…"}'`
+2. In **Admin**, create a node, copy the enrollment token into `deploy/.env` as
+   `QUARRY_ENROLLMENT_TOKEN=…`, and restart the daemon: `docker compose --env-file deploy/.env -f deploy/docker-compose.dev.yml up -d daemon`
+3. Add an allocation range (e.g. ip `0.0.0.0`, ports 25565–25575) on the node.
+4. Create a server — pick a runner and Minecraft version, then open the console.
 
-Useful targets: `make build`, `make test` (unit + integration; needs Docker), `make test-unit`, `make lint`, `make migrate`, `make proto`.
+Useful targets: `make build`, `make test` (unit + integration; needs Docker), `make test-unit`,
+`make lint`, `make migrate`, `make proto`, `make web-build`.

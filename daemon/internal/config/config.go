@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,6 +33,10 @@ type Config struct {
 	ServerName string
 	// HeartbeatInterval is how often a beat is sent.
 	HeartbeatInterval time.Duration
+	// ContainerUID is the UID/GID server containers run as. It must match
+	// the daemon's own effective UID so the bind-mounted server directories
+	// are writable inside and out. Default 1500 (the packaged daemon user).
+	ContainerUID int
 }
 
 func Load() (Config, error) {
@@ -44,6 +49,14 @@ func Load() (Config, error) {
 		CAFile:            os.Getenv("QUARRY_CA_FILE"),
 		ServerName:        os.Getenv("QUARRY_TLS_SERVER_NAME"),
 		HeartbeatInterval: 10 * time.Second,
+		ContainerUID:      1500,
+	}
+	if v := os.Getenv("QUARRY_CONTAINER_UID"); v != "" {
+		uid, err := strconv.Atoi(v)
+		if err != nil || uid <= 0 {
+			return c, fmt.Errorf("QUARRY_CONTAINER_UID must be a positive integer")
+		}
+		c.ContainerUID = uid
 	}
 	if raw := os.Getenv("QUARRY_ARTIFACT_ALLOW_CIDRS"); raw != "" {
 		for _, cidr := range strings.Split(raw, ",") {

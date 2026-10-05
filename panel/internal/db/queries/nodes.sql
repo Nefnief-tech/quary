@@ -1,3 +1,11 @@
+-- name: PickNodeWithFreeAllocation :one
+SELECT n.* FROM nodes n
+JOIN allocations a ON a.node_id = n.id
+LEFT JOIN servers s ON s.allocation_id = a.id
+WHERE s.id IS NULL AND n.last_seen_at > now() - interval '35 seconds'
+ORDER BY n.created_at
+LIMIT 1;
+
 -- name: CreateNode :one
 INSERT INTO nodes (id, name, description)
 VALUES ($1, $2, $3)

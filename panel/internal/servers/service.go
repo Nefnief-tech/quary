@@ -80,13 +80,23 @@ type CreateRequest struct {
 }
 
 // Create resolves the artifact, claims a free allocation, persists the
-// server (status installing) and dispatches the install to the node.
+// server (status installing) and dispatches the install to the node. An
+// unset NodeID means "any online node with a free allocation".
 func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateRequest) (gen.Server, error) {
 	if req.Name == "" || len(req.Name) > 64 {
 		return gen.Server{}, fmt.Errorf("name must be 1-64 characters")
 	}
 	if req.MemoryMB == 0 {
 		req.MemoryMB = 2048
+	}
+	if req.NodeID == uuid.Nil {
+		node, err := s.q.PickNodeWithFreeAllocation(ctx)
+		if err != nil {
+			return gen.Server{}, errors.New("no online node with a free allocation; create a node and add allocations first")
+		}
+		req.NodeID = node.ID
+	} else if _, err := s.q.GetNode(ctx, req.NodeID); err != nil {
+		return gen.Server{}, errors.New("node not found")
 	}
 
 	runner, artifact, err := s.catalog.Resolve(ctx, req.Runner, req.MCVersion)

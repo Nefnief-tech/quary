@@ -110,6 +110,34 @@ func (q *Queries) ListNodes(ctx context.Context) ([]Node, error) {
 	return items, nil
 }
 
+const pickNodeWithFreeAllocation = `-- name: PickNodeWithFreeAllocation :one
+SELECT n.id, n.name, n.description, n.daemon_version, n.hostname, n.docker_version, n.os, n.arch, n.last_seen_at, n.created_at, n.updated_at FROM nodes n
+JOIN allocations a ON a.node_id = n.id
+LEFT JOIN servers s ON s.allocation_id = a.id
+WHERE s.id IS NULL AND n.last_seen_at > now() - interval '35 seconds'
+ORDER BY n.created_at
+LIMIT 1
+`
+
+func (q *Queries) PickNodeWithFreeAllocation(ctx context.Context) (Node, error) {
+	row := q.db.QueryRow(ctx, pickNodeWithFreeAllocation)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Description,
+		&i.DaemonVersion,
+		&i.Hostname,
+		&i.DockerVersion,
+		&i.Os,
+		&i.Arch,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const touchNodeHeartbeat = `-- name: TouchNodeHeartbeat :exec
 UPDATE nodes SET
     last_seen_at = now(),

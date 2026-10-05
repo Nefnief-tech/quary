@@ -37,7 +37,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	rt, err := runtime.NewDocker()
+	rt, err := runtime.NewDocker(cfg.ContainerUID)
 	if err != nil {
 		log.Error("docker runtime init failed", "err", err)
 		os.Exit(1)

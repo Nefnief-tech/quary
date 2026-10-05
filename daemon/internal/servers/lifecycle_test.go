@@ -100,7 +100,7 @@ func TestLifecycleWithDocker(t *testing.T) {
 	}))
 	defer artifactSrv.Close()
 
-	rt, err := runtime.NewDocker()
+	rt, err := runtime.NewDocker(os.Getuid())
 	if err != nil {
 		t.Skipf("docker unavailable: %v", err)
 	}

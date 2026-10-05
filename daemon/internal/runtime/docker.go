@@ -21,21 +21,25 @@ import (
 // labelServer marks containers as quarry-managed.
 const labelServer = "quarry.server-id"
 
-// containerUser matches the daemon's UID/GID (1500) so the bind-mounted
-// data directory is writable by exactly the same user inside and outside.
-const containerUser = "1500:1500"
-
 // Docker implements ContainerRuntime against the Docker Engine API.
 type Docker struct {
 	cli *client.Client
+	// user is "uid:uid" — server containers run as the daemon's own UID so
+	// the bind-mounted data directory is writable inside and outside.
+	user string
 }
 
-func NewDocker() (*Docker, error) {
+// NewDocker builds the runtime; containerUID must match the daemon's
+// effective UID.
+func NewDocker(containerUID int) (*Docker, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
 	}
-	return &Docker{cli: cli}, nil
+	if containerUID <= 0 {
+		containerUID = 1500
+	}
+	return &Docker{cli: cli, user: fmt.Sprintf("%d:%d", containerUID, containerUID)}, nil
 }
 
 func containerName(id uuid.UUID) string {
@@ -82,7 +86,7 @@ func (d *Docker) CreateAndStart(ctx context.Context, spec ServerSpec, dataDir st
 		Labels: map[string]string{
 			labelServer: spec.ID.String(),
 		},
-		User:         containerUser,
+		User:         d.user,
 		WorkingDir:   "/data",
 		OpenStdin:    true,
 		StdinOnce:    false,

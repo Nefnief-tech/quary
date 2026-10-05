@@ -98,8 +98,7 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeID, err := uuid.Parse(req.NodeID)
 	if err != nil {
-		apiError(w, http.StatusBadRequest, "invalid node_id")
-		return
+		nodeID = uuid.Nil // let the service pick any online node with a free allocation
 	}
 	sv, err := s.serverSvc.Create(r.Context(), Identity(r).UserID, servers.CreateRequest{
 		Name: req.Name, NodeID: nodeID, Runner: req.Runner,
