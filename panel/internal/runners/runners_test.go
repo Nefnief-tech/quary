@@ -25,8 +25,9 @@ func testClient(t *testing.T) *http.Client {
 
 func TestJavaForMC(t *testing.T) {
 	cases := map[string]int{
+		"26.3":   25,
+		"26.1.2": 25,
 		"1.21.4": 21,
-		"1.20.6": 21,
 		"1.20.5": 21,
 		"1.20.4": 17,
 		"1.18.2": 17,
@@ -44,7 +45,7 @@ func TestJavaForMC(t *testing.T) {
 }
 
 func TestImageForJava(t *testing.T) {
-	if got := ImageForJava(21); got != "eclipse-temurin:21-jre-ubuntu" {
+	if got := ImageForJava(21); got != "eclipse-temurin:21-jre-noble" {
 		t.Fatalf("ImageForJava(21) = %q", got)
 	}
 }
@@ -122,26 +123,44 @@ func TestVanillaListAndResolve(t *testing.T) {
 	}
 }
 
-func TestPaperResolvePicksLatestDefaultBuild(t *testing.T) {
+func TestPaperListAndResolveLatestBuild(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/projects/paper", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"versions":["1.21.1","1.20.4"]}`))
+		_, _ = w.Write([]byte(`{"project":{"id":"paper"},"versions":{
+		  "1.21":["1.21.11-rc3","1.21.8","1.21.1"],
+		  "1.20":["1.20.6","1.20.1"]
+		}}`))
 	})
-	mux.HandleFunc("/projects/paper/versions/1.21.1/builds", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"builds":[
-		  {"build":10,"channel":"experimental","downloads":{"application":{"name":"paper-10.jar","sha256":"h10"}}},
-		  {"build":8,"channel":"default","downloads":{"application":{"name":"paper-8.jar","sha256":"h8"}}}
-		]}`))
+	mux.HandleFunc("/projects/paper/versions/1.21.8/builds/latest", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":60,"channel":"STABLE","downloads":{"server:default":{
+		  "name":"paper-1.21.8-60.jar",
+		  "checksums":{"sha256":"abc256"},
+		  "url":"https://fill-data.example/paper-1.21.8-60.jar"
+		}}}`))
 	})
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
 	p := NewPaperWithBase(ts.URL, testClient(t))
-	artifact, err := p.Resolve(context.Background(), "1.21.1")
+	ctx := context.Background()
+
+	versions, err := p.ListVersions(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artifact.SHA256 != "h8" || artifact.URL != ts.URL+"/projects/paper/versions/1.21.1/builds/8/downloads/paper-8.jar" {
+	stable := map[string]bool{}
+	for _, v := range versions {
+		stable[v.MCVersion] = v.Stable
+	}
+	if !stable["1.21.8"] || stable["1.21.11-rc3"] {
+		t.Fatalf("stability flags wrong: %v", stable)
+	}
+
+	artifact, err := p.Resolve(ctx, "1.21.8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.SHA256 != "abc256" || artifact.URL != "https://fill-data.example/paper-1.21.8-60.jar" {
 		t.Fatalf("artifact = %+v", artifact)
 	}
 	if p.PluginKind() != Plugins {
@@ -149,23 +168,17 @@ func TestPaperResolvePicksLatestDefaultBuild(t *testing.T) {
 	}
 }
 
-func TestPaperResolveFallsBackToNewestBuild(t *testing.T) {
+func TestPaperResolveFailsWithoutDownload(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/projects/paper/versions/1.21.1/builds", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"builds":[
-		  {"build":11,"channel":"experimental","downloads":{"application":{"name":"p.jar","sha256":"h11"}}}
-		]}`))
+	mux.HandleFunc("/projects/paper/versions/9.9.9/builds/latest", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":1,"downloads":{}}`))
 	})
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
 
 	p := NewPaperWithBase(ts.URL, testClient(t))
-	artifact, err := p.Resolve(context.Background(), "1.21.1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if artifact.SHA256 != "h11" {
-		t.Fatalf("expected fallback to newest build, got %+v", artifact)
+	if _, err := p.Resolve(context.Background(), "9.9.9"); err == nil {
+		t.Fatal("missing download must fail")
 	}
 }
 

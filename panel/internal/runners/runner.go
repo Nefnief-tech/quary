@@ -57,7 +57,7 @@ type CatalogVersion struct {
 // ImageForJava is the lean base image per Java major. One image per Java
 // version; the daemon picks it from the runner's JavaVersion mapping.
 func ImageForJava(javaVersion int) string {
-	return fmt.Sprintf("eclipse-temurin:%d-jre-ubuntu", javaVersion)
+	return fmt.Sprintf("eclipse-temurin:%d-jre-noble", javaVersion)
 }
 
 var mcVersionRe = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.(\d+))?$`)
@@ -101,9 +101,11 @@ func atLeast(mcVersion, want string) bool {
 }
 
 // JavaForMC is the common Java mapping shared by vanilla-like runners.
-// Java 21 for 1.20.5+, 17 for 1.17–1.20.4, 8 below that.
+// Java 25 for the 26.x releases, 21 for 1.20.5+, 17 for 1.17–1.20.4, 8 below.
 func JavaForMC(mcVersion string) int {
 	switch {
+	case atLeast(mcVersion, "26"):
+		return 25
 	case atLeast(mcVersion, "1.20.5"):
 		return 21
 	case atLeast(mcVersion, "1.17"):

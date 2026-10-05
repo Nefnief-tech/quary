@@ -6,16 +6,15 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"quarry.dev/quarry/internal/ssrf"
 )
 
-const (
-	paperAPIBase = "https://api.papermc.io/v2"
-	paperProject = "paper"
-)
+// paperAPIBase is the PaperMC "Fill" v3 API (api.papermc.io v2 is gone).
+const paperAPIBase = "https://fill.papermc.io/v3"
 
-// Paper runs the PaperMC server (api.papermc.io v2).
+// Paper runs the PaperMC server.
 type Paper struct {
 	apiBase string
 	client  *http.Client
@@ -34,18 +33,20 @@ func (p *Paper) PluginKind() PluginKind       { return Plugins }
 func (p *Paper) JavaVersion(mc string) int    { return JavaForMC(mc) }
 func (p *Paper) Launch(memoryMB int) []string { return javaLaunch(memoryMB) }
 
-type paperProjectMeta struct {
-	Versions []string `json:"versions"`
+type paperProject struct {
+	Versions map[string][]string `json:"versions"`
 }
 
 func (p *Paper) ListVersions(ctx context.Context) ([]CatalogVersion, error) {
-	var m paperProjectMeta
-	if err := fetchJSON(ctx, p.client, p.apiBase+"/projects/"+paperProject, &m); err != nil {
+	var m paperProject
+	if err := fetchJSON(ctx, p.client, p.apiBase+"/projects/paper", &m); err != nil {
 		return nil, fmt.Errorf("paper versions: %w", err)
 	}
-	out := make([]CatalogVersion, 0, len(m.Versions))
-	for _, v := range m.Versions {
-		out = append(out, CatalogVersion{MCVersion: v, Stable: true})
+	out := make([]CatalogVersion, 0)
+	for _, versions := range m.Versions {
+		for _, v := range versions {
+			out = append(out, CatalogVersion{MCVersion: v, Stable: paperStable(v)})
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return versionLess(out[j].MCVersion, out[i].MCVersion)
@@ -53,48 +54,38 @@ func (p *Paper) ListVersions(ctx context.Context) ([]CatalogVersion, error) {
 	return out, nil
 }
 
-type paperBuilds struct {
-	Builds []struct {
-		Build     int    `json:"build"`
-		Channel   string `json:"channel"`
-		Downloads struct {
-			Application struct {
-				Name   string `json:"name"`
-				SHA256 string `json:"sha256"`
-			} `json:"application"`
-		} `json:"downloads"`
-	} `json:"builds"`
+// paperStable filters release candidates and pre-releases.
+func paperStable(v string) bool {
+	return !strings.Contains(v, "-rc") && !strings.Contains(v, "-pre") && !strings.Contains(v, "-snapshot")
 }
 
+type paperLatestBuild struct {
+	ID        int    `json:"id"`
+	Channel   string `json:"channel"`
+	Downloads map[string]struct {
+		Name      string `json:"name"`
+		Checksums struct {
+			SHA256 string `json:"sha256"`
+		} `json:"checksums"`
+		URL string `json:"url"`
+	} `json:"downloads"`
+}
+
+// Resolve fetches the latest build for a version. The Fill API publishes a
+// SHA-256 checksum for every download.
 func (p *Paper) Resolve(ctx context.Context, mcVersion string) (Artifact, error) {
-	var b paperBuilds
-	url := fmt.Sprintf("%s/projects/%s/versions/%s/builds", p.apiBase, paperProject, mcVersion)
+	var b paperLatestBuild
+	url := fmt.Sprintf("%s/projects/paper/versions/%s/builds/latest", p.apiBase, mcVersion)
 	if err := fetchJSON(ctx, p.client, url, &b); err != nil {
-		return Artifact{}, fmt.Errorf("paper builds for %s: %w", mcVersion, err)
+		return Artifact{}, fmt.Errorf("paper latest build for %s: %w", mcVersion, err)
 	}
-	// Prefer the newest default-channel build; fall back to the newest build.
-	best := -1
-	fallback := -1
-	for i, build := range b.Builds {
-		if best == -1 || build.Build > b.Builds[best].Build {
-			fallback = i
-		}
-		if build.Channel == "default" && (best == -1 || build.Build > b.Builds[best].Build) {
-			best = i
-		}
+	dl, ok := b.Downloads["server:default"]
+	if !ok {
+		return Artifact{}, fmt.Errorf("paper %s build %d: no server download", mcVersion, b.ID)
 	}
-	idx := best
-	if idx == -1 {
-		idx = fallback
-	}
-	if idx == -1 {
-		return Artifact{}, fmt.Errorf("paper %s: no builds published", mcVersion)
-	}
-	build := b.Builds[idx]
 	return Artifact{
-		URL: fmt.Sprintf("%s/projects/%s/versions/%s/builds/%d/downloads/%s",
-			p.apiBase, paperProject, mcVersion, build.Build, build.Downloads.Application.Name),
-		SHA256: build.Downloads.Application.SHA256,
+		URL:    dl.URL,
+		SHA256: dl.Checksums.SHA256,
 		Name:   "server.jar",
 	}, nil
 }
