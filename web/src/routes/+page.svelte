@@ -15,6 +15,8 @@
 	let runnerId = $state('paper');
 	let mcVersion = $state('');
 	let memoryMb = $state(2048);
+	let cpuPercent = $state(200);
+	let withMap = $state(true);
 
 	const statusStyle: Record<string, string> = {
 		running: 'bg-emerald-400/10 text-emerald-400 ring-emerald-400/20',
@@ -93,7 +95,9 @@
 				node_id: '',
 				runner: runnerId,
 				mc_version: mcVersion,
-				memory_mb: memoryMb
+				memory_mb: memoryMb,
+				cpu_percent: Number(cpuPercent),
+				with_map: withMap
 			});
 			showCreate = false;
 			name = '';
@@ -155,6 +159,19 @@
 			<label class="block">
 				<span class="label">Memory (MiB)</span>
 				<input type="number" min="512" step="512" class="input" bind:value={memoryMb} />
+			</label>
+		</div>
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+			<label class="block">
+				<span class="label">CPU (100 = one core)</span>
+				<input type="number" min="50" max="3200" step="50" class="input" bind:value={cpuPercent} />
+			</label>
+			<label class="flex items-center gap-2.5 pt-6">
+				<input type="checkbox" class="h-4 w-4 accent-emerald-500" bind:checked={withMap} />
+				<span class="text-sm text-zinc-300">
+					Preinstall BlueMap
+					<span class="block text-xs text-zinc-600">live web map with its own port</span>
+				</span>
 			</label>
 		</div>
 		{#if error}

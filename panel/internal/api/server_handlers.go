@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -39,8 +40,10 @@ type serverResponse struct {
 	MapURL string `json:"map_url,omitempty"`
 	// History is the last five minutes of CPU/RAM/players samples for the
 	// activity graphs (nil while the server has not run recently).
-	History   []hub.Sample `json:"history,omitempty"`
-	CreatedAt time.Time    `json:"created_at"`
+	History []hub.Sample `json:"history,omitempty"`
+	// Expose tracks the playit.gg tunnel plugin state.
+	Expose    *servers.ExposeConfig `json:"expose,omitempty"`
+	CreatedAt time.Time             `json:"created_at"`
 }
 
 func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverResponse {
@@ -49,6 +52,10 @@ func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverRespon
 		Runner: sv.Runner, MCVersion: sv.McVersion, Status: sv.Status,
 		MemoryMB: sv.MemoryMb, CPUPercent: sv.CpuPercent, CreatedAt: sv.CreatedAt,
 		History: s.hub.History(sv.ID),
+	}
+	var cfg servers.Config
+	if err := json.Unmarshal(sv.Config, &cfg); err == nil {
+		out.Expose = cfg.Expose
 	}
 	if alloc, err := s.q.GetAllocationForServer(ctx, sv.ID); err == nil {
 		out.IP = alloc.Ip
@@ -86,11 +93,13 @@ func rbacHas(id *auth.Identity, perm string) bool {
 }
 
 type createServerRequest struct {
-	Name      string `json:"name"`
-	NodeID    string `json:"node_id"`
-	Runner    string `json:"runner"`
-	MCVersion string `json:"mc_version"`
-	MemoryMB  int32  `json:"memory_mb"`
+	Name       string `json:"name"`
+	NodeID     string `json:"node_id"`
+	Runner     string `json:"runner"`
+	MCVersion  string `json:"mc_version"`
+	MemoryMB   int32  `json:"memory_mb"`
+	CPUPercent int32  `json:"cpu_percent"`
+	WithMap    *bool  `json:"with_map"`
 }
 
 func (s *Server) listServers(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +134,7 @@ func (s *Server) createServer(w http.ResponseWriter, r *http.Request) {
 	sv, err := s.serverSvc.Create(r.Context(), Identity(r).UserID, servers.CreateRequest{
 		Name: req.Name, NodeID: nodeID, Runner: req.Runner,
 		MCVersion: req.MCVersion, MemoryMB: req.MemoryMB,
+		CPUPercent: req.CPUPercent, WithMap: req.WithMap,
 	})
 	if err != nil {
 		switch {
@@ -244,8 +254,41 @@ func (s *Server) consoleToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":      token,
 		"url":        "/api/v1/servers/" + sv.ID.String() + "/console?token=" + token,
-		"scrollback": s.hub.Scrollback(sv.ID),
+		"scrollback": s.consoleHistory(r.Context(), sv.ID),
 	})
+}
+
+// consoleHistory returns the replay buffer for a fresh console view: the
+// persisted history plus any hub lines not yet flushed (or the hub alone
+// before the first flush). The panel restart case resolves naturally: the
+// hub starts empty and Postgres provides the record.
+func (s *Server) consoleHistory(ctx context.Context, serverID uuid.UUID) []string {
+	rows, err := s.q.RecentConsoleLines(ctx, gen.RecentConsoleLinesParams{
+		ServerID: serverID, Limit: 300,
+	})
+	var out []string
+	var lastAt time.Time
+	if err == nil {
+		out = make([]string, 0, len(rows)+16)
+		for i := len(rows) - 1; i >= 0; i-- {
+			out = append(out, rows[i].Line)
+			lastAt = rows[i].At
+		}
+	}
+	entries := s.hub.ScrollbackEntries(serverID)
+	if len(out) == 0 {
+		out = make([]string, 0, len(entries))
+		for _, e := range entries {
+			out = append(out, e.Line)
+		}
+		return out
+	}
+	for _, e := range entries {
+		if e.At.After(lastAt) {
+			out = append(out, e.Line)
+		}
+	}
+	return out
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -291,9 +334,9 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 		return conn.WriteJSON(v)
 	}
 
-	// Replay scrollback so the console isn't blank, plus the latest player
+	// Replay history so the console isn't blank, plus the latest player
 	// snapshot so the Players tab starts populated.
-	for _, line := range s.hub.Scrollback(serverID) {
+	for _, line := range s.consoleHistory(r.Context(), serverID) {
 		if err := sendJSON(map[string]any{"type": "console", "line": line}); err != nil {
 			return
 		}

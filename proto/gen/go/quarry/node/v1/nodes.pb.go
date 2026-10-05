@@ -499,7 +499,7 @@ type Command struct {
 	//	*Command_WriteFile
 	//	*Command_DeleteFile
 	//	*Command_InstallPlugin
-	//	*Command_PollPlayers
+	//	*Command_RunConsole
 	Action        isCommand_Action `protobuf_oneof:"action"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -639,10 +639,10 @@ func (x *Command) GetInstallPlugin() *InstallPlugin {
 	return nil
 }
 
-func (x *Command) GetPollPlayers() *PollPlayers {
+func (x *Command) GetRunConsole() *RunConsole {
 	if x != nil {
-		if x, ok := x.Action.(*Command_PollPlayers); ok {
-			return x.PollPlayers
+		if x, ok := x.Action.(*Command_RunConsole); ok {
+			return x.RunConsole
 		}
 	}
 	return nil
@@ -692,8 +692,8 @@ type Command_InstallPlugin struct {
 	InstallPlugin *InstallPlugin `protobuf:"bytes,11,opt,name=install_plugin,json=installPlugin,proto3,oneof"`
 }
 
-type Command_PollPlayers struct {
-	PollPlayers *PollPlayers `protobuf:"bytes,12,opt,name=poll_players,json=pollPlayers,proto3,oneof"`
+type Command_RunConsole struct {
+	RunConsole *RunConsole `protobuf:"bytes,12,opt,name=run_console,json=runConsole,proto3,oneof"`
 }
 
 func (*Command_InstallServer) isCommand_Action() {}
@@ -716,31 +716,38 @@ func (*Command_DeleteFile) isCommand_Action() {}
 
 func (*Command_InstallPlugin) isCommand_Action() {}
 
-func (*Command_PollPlayers) isCommand_Action() {}
+func (*Command_RunConsole) isCommand_Action() {}
 
-// PollPlayers asks the daemon to run `list` on the console and parse the
-// response. The result body is JSON: {"names":["…"],"online":n,"max":m}.
-type PollPlayers struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+// RunConsole writes one line to the server console and captures reply lines
+// that match a RE2 pattern (the daemon compiles it; RE2 has no catastrophic
+// backtracking). The result body is JSON: {"lines":["…"]}. Used for `list`,
+// `whitelist list` and similar read-only console queries.
+type RunConsole struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Input    string                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	// RE2 pattern reply lines must match to be captured.
+	Expect string `protobuf:"bytes,3,opt,name=expect,proto3" json:"expect,omitempty"`
+	// Stop after this many matching lines (default 1).
+	MaxLines      int32 `protobuf:"varint,4,opt,name=max_lines,json=maxLines,proto3" json:"max_lines,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PollPlayers) Reset() {
-	*x = PollPlayers{}
+func (x *RunConsole) Reset() {
+	*x = RunConsole{}
 	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PollPlayers) String() string {
+func (x *RunConsole) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PollPlayers) ProtoMessage() {}
+func (*RunConsole) ProtoMessage() {}
 
-func (x *PollPlayers) ProtoReflect() protoreflect.Message {
+func (x *RunConsole) ProtoReflect() protoreflect.Message {
 	mi := &file_quarry_node_v1_nodes_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -752,16 +759,37 @@ func (x *PollPlayers) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PollPlayers.ProtoReflect.Descriptor instead.
-func (*PollPlayers) Descriptor() ([]byte, []int) {
+// Deprecated: Use RunConsole.ProtoReflect.Descriptor instead.
+func (*RunConsole) Descriptor() ([]byte, []int) {
 	return file_quarry_node_v1_nodes_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *PollPlayers) GetServerId() string {
+func (x *RunConsole) GetServerId() string {
 	if x != nil {
 		return x.ServerId
 	}
 	return ""
+}
+
+func (x *RunConsole) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *RunConsole) GetExpect() string {
+	if x != nil {
+		return x.Expect
+	}
+	return ""
+}
+
+func (x *RunConsole) GetMaxLines() int32 {
+	if x != nil {
+		return x.MaxLines
+	}
+	return 0
 }
 
 // InstallPlugin downloads a marketplace jar into the server's content
@@ -2042,7 +2070,7 @@ const file_quarry_node_v1_nodes_proto_rawDesc = "" +
 	"\x0eChannelRequest\x12-\n" +
 	"\x05event\x18\x01 \x01(\v2\x15.quarry.node.v1.EventH\x00R\x05event\x127\n" +
 	"\x06result\x18\x02 \x01(\v2\x1d.quarry.node.v1.CommandResultH\x00R\x06resultB\t\n" +
-	"\apayload\"\xfe\x05\n" +
+	"\apayload\"\xfb\x05\n" +
 	"\aCommand\x12%\n" +
 	"\x0ecorrelation_id\x18\x01 \x01(\tR\rcorrelationId\x12F\n" +
 	"\x0einstall_server\x18\x02 \x01(\v2\x1d.quarry.node.v1.InstallServerH\x00R\rinstallServer\x12@\n" +
@@ -2060,11 +2088,16 @@ const file_quarry_node_v1_nodes_proto_rawDesc = "" +
 	"\vdelete_file\x18\n" +
 	" \x01(\v2\x1a.quarry.node.v1.DeleteFileH\x00R\n" +
 	"deleteFile\x12F\n" +
-	"\x0einstall_plugin\x18\v \x01(\v2\x1d.quarry.node.v1.InstallPluginH\x00R\rinstallPlugin\x12@\n" +
-	"\fpoll_players\x18\f \x01(\v2\x1b.quarry.node.v1.PollPlayersH\x00R\vpollPlayersB\b\n" +
-	"\x06action\"*\n" +
-	"\vPollPlayers\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\x8a\x01\n" +
+	"\x0einstall_plugin\x18\v \x01(\v2\x1d.quarry.node.v1.InstallPluginH\x00R\rinstallPlugin\x12=\n" +
+	"\vrun_console\x18\f \x01(\v2\x1a.quarry.node.v1.RunConsoleH\x00R\n" +
+	"runConsoleB\b\n" +
+	"\x06action\"t\n" +
+	"\n" +
+	"RunConsole\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +
+	"\x05input\x18\x02 \x01(\tR\x05input\x12\x16\n" +
+	"\x06expect\x18\x03 \x01(\tR\x06expect\x12\x1b\n" +
+	"\tmax_lines\x18\x04 \x01(\x05R\bmaxLines\"\x8a\x01\n" +
 	"\rInstallPlugin\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x16\n" +
@@ -2190,7 +2223,7 @@ var file_quarry_node_v1_nodes_proto_goTypes = []any{
 	(*ChannelResponse)(nil),      // 5: quarry.node.v1.ChannelResponse
 	(*ChannelRequest)(nil),       // 6: quarry.node.v1.ChannelRequest
 	(*Command)(nil),              // 7: quarry.node.v1.Command
-	(*PollPlayers)(nil),          // 8: quarry.node.v1.PollPlayers
+	(*RunConsole)(nil),           // 8: quarry.node.v1.RunConsole
 	(*InstallPlugin)(nil),        // 9: quarry.node.v1.InstallPlugin
 	(*InstallServer)(nil),        // 10: quarry.node.v1.InstallServer
 	(*ExtraFile)(nil),            // 11: quarry.node.v1.ExtraFile
@@ -2225,7 +2258,7 @@ var file_quarry_node_v1_nodes_proto_depIdxs = []int32{
 	18, // 12: quarry.node.v1.Command.write_file:type_name -> quarry.node.v1.WriteFile
 	19, // 13: quarry.node.v1.Command.delete_file:type_name -> quarry.node.v1.DeleteFile
 	9,  // 14: quarry.node.v1.Command.install_plugin:type_name -> quarry.node.v1.InstallPlugin
-	8,  // 15: quarry.node.v1.Command.poll_players:type_name -> quarry.node.v1.PollPlayers
+	8,  // 15: quarry.node.v1.Command.run_console:type_name -> quarry.node.v1.RunConsole
 	11, // 16: quarry.node.v1.InstallServer.extras:type_name -> quarry.node.v1.ExtraFile
 	22, // 17: quarry.node.v1.Event.console:type_name -> quarry.node.v1.ConsoleLine
 	23, // 18: quarry.node.v1.Event.stats:type_name -> quarry.node.v1.ServerStats
@@ -2264,7 +2297,7 @@ func file_quarry_node_v1_nodes_proto_init() {
 		(*Command_WriteFile)(nil),
 		(*Command_DeleteFile)(nil),
 		(*Command_InstallPlugin)(nil),
-		(*Command_PollPlayers)(nil),
+		(*Command_RunConsole)(nil),
 	}
 	file_quarry_node_v1_nodes_proto_msgTypes[21].OneofWrappers = []any{
 		(*Event_Console)(nil),

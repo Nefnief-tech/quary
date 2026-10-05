@@ -1,14 +1,12 @@
-// Player list support: the daemon runs `list` on the console and parses
-// the reply. All loaders we ship (Vanilla, Paper, Fabric) print the same
-// "There are N of a max of M players online: A, B" line.
+// Console capture support: the daemon writes a line to a running server's
+// console and captures reply lines matching a pattern. Panel-side consumers
+// parse the captured lines (player lists, whitelist, tunnel claim URLs).
 package servers
 
 import (
 	"context"
 	"fmt"
 	"regexp"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,14 +15,12 @@ import (
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
-// listRe tolerates log prefixes ("[12:34:56] [Server thread/INFO]: ").
-var listRe = regexp.MustCompile(`There are (\d+) of a max of (\d+) players online(?::\s*(.*))?`)
+// captureWindow bounds how long RunConsole waits for a matching reply.
+const captureWindow = 3 * time.Second
 
-// PlayerList is the parsed `list` output (JSON-encoded in results).
-type PlayerList struct {
-	Names  []string `json:"names"`
-	Online int      `json:"online"`
-	Max    int      `json:"max"`
+// RunConsoleResult is the JSON-encoded command body.
+type RunConsoleResult struct {
+	Lines []string `json:"lines"`
 }
 
 // tapConsole registers a channel that receives every console line of a
@@ -60,10 +56,10 @@ func feedTaps(p *process, line string) {
 	}
 }
 
-// PollPlayers writes `list` to the console and parses the reply line out of
-// the tapped console stream. Polling keeps the feature loader-agnostic — no
+// RunConsole runs one console input and captures reply lines matching the
+// expect pattern. Polling the console keeps features loader-agnostic: no
 // plugin or query protocol required.
-func (m *Manager) PollPlayers(ctx context.Context, cmd *nodesv1.PollPlayers) (*PlayerList, error) {
+func (m *Manager) RunConsole(ctx context.Context, cmd *nodesv1.RunConsole) (*RunConsoleResult, error) {
 	id, err := uuid.Parse(cmd.GetServerId())
 	if err != nil {
 		return nil, fmt.Errorf("invalid server id: %w", err)
@@ -72,16 +68,34 @@ func (m *Manager) PollPlayers(ctx context.Context, cmd *nodesv1.PollPlayers) (*P
 	if p == nil || p.console == nil {
 		return nil, runtime.ErrNotRunning
 	}
+	if len(cmd.GetInput()) > 256 || len(cmd.GetInput()) == 0 {
+		return nil, fmt.Errorf("invalid console input")
+	}
+	if len(cmd.GetExpect()) > 256 {
+		return nil, fmt.Errorf("invalid expect pattern")
+	}
+	expect, err := regexp.Compile(cmd.GetExpect())
+	if err != nil {
+		return nil, fmt.Errorf("expect pattern: %w", err)
+	}
+	maxLines := int(cmd.GetMaxLines())
+	if maxLines <= 0 {
+		maxLines = 1
+	}
+	if maxLines > 32 {
+		maxLines = 32
+	}
+
 	tap, done, ok := m.tapConsole(id)
 	if !ok {
 		return nil, runtime.ErrNotRunning
 	}
 	defer done()
-	if err := p.console.WriteLine("list"); err != nil {
-		return nil, fmt.Errorf("send list: %w", err)
+	if err := p.console.WriteLine(cmd.GetInput()); err != nil {
+		return nil, fmt.Errorf("send console input: %w", err)
 	}
 
-	window := 3 * time.Second
+	window := captureWindow
 	if deadline, has := ctx.Deadline(); has {
 		if d := time.Until(deadline); d < window {
 			window = d
@@ -89,35 +103,21 @@ func (m *Manager) PollPlayers(ctx context.Context, cmd *nodesv1.PollPlayers) (*P
 	}
 	timer := time.NewTimer(window)
 	defer timer.Stop()
+
+	out := &RunConsoleResult{Lines: []string{}}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timer.C:
-			return nil, fmt.Errorf("no list response within %s", window)
+			return out, nil
 		case line := <-tap:
-			if pl, ok := parseListLine(line); ok {
-				return pl, nil
+			if expect.MatchString(line) {
+				out.Lines = append(out.Lines, line)
+				if len(out.Lines) >= maxLines {
+					return out, nil
+				}
 			}
 		}
 	}
-}
-
-// parseListLine extracts the player list from one console line.
-func parseListLine(line string) (*PlayerList, bool) {
-	match := listRe.FindStringSubmatch(line)
-	if match == nil {
-		return nil, false
-	}
-	online, _ := strconv.Atoi(match[1])
-	max, _ := strconv.Atoi(match[2])
-	var names []string
-	if raw := strings.TrimSpace(match[3]); raw != "" {
-		for _, n := range strings.Split(raw, ", ") {
-			if n = strings.TrimSpace(n); n != "" {
-				names = append(names, n)
-			}
-		}
-	}
-	return &PlayerList{Names: names, Online: online, Max: max}, true
 }

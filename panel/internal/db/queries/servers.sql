@@ -28,5 +28,12 @@ UPDATE servers SET allocation_id = $2, updated_at = now() WHERE id = $1;
 -- name: UpdateServerConfig :exec
 UPDATE servers SET config = $2, updated_at = now() WHERE id = $1;
 
+-- name: SetServerMapAllocation :exec
+UPDATE servers SET map_allocation_id = $2, updated_at = now() WHERE id = $1;
+
+-- name: SetServerVersion :exec
+UPDATE servers SET runner = $2, mc_version = $3, config = $4, updated_at = now()
+WHERE id = $1;
+
 -- name: DeleteServer :exec
 DELETE FROM servers WHERE id = $1;

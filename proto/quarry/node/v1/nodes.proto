@@ -105,14 +105,21 @@ message Command {
     WriteFile write_file = 9;
     DeleteFile delete_file = 10;
     InstallPlugin install_plugin = 11;
-    PollPlayers poll_players = 12;
+    RunConsole run_console = 12;
   }
 }
 
-// PollPlayers asks the daemon to run `list` on the console and parse the
-// response. The result body is JSON: {"names":["…"],"online":n,"max":m}.
-message PollPlayers {
+// RunConsole writes one line to the server console and captures reply lines
+// that match a RE2 pattern (the daemon compiles it; RE2 has no catastrophic
+// backtracking). The result body is JSON: {"lines":["…"]}. Used for `list`,
+// `whitelist list` and similar read-only console queries.
+message RunConsole {
   string server_id = 1;
+  string input = 2;
+  // RE2 pattern reply lines must match to be captured.
+  string expect = 3;
+  // Stop after this many matching lines (default 1).
+  int32 max_lines = 4;
 }
 
 // InstallPlugin downloads a marketplace jar into the server's content

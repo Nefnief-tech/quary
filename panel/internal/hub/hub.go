@@ -83,7 +83,7 @@ type Hub struct {
 	mu         sync.RWMutex
 	subs       map[uuid.UUID]map[*subscription]struct{}
 	stats      map[uuid.UUID]*StatsSnapshot
-	scrollback map[uuid.UUID][]string
+	scrollback map[uuid.UUID][]consoleEntry
 	players    map[uuid.UUID]*PlayerList
 	history    map[uuid.UUID][]Sample
 }
@@ -92,7 +92,7 @@ func New() *Hub {
 	return &Hub{
 		subs:       map[uuid.UUID]map[*subscription]struct{}{},
 		stats:      map[uuid.UUID]*StatsSnapshot{},
-		scrollback: map[uuid.UUID][]string{},
+		scrollback: map[uuid.UUID][]consoleEntry{},
 		players:    map[uuid.UUID]*PlayerList{},
 		history:    map[uuid.UUID][]Sample{},
 	}
@@ -146,7 +146,10 @@ func (h *Hub) Publish(ev Event) {
 	case EventConsole:
 		if ev.Console != nil {
 			h.mu.Lock()
-			lines := append(h.scrollback[ev.ServerID], ev.Console.GetLine())
+			lines := append(h.scrollback[ev.ServerID], consoleEntry{
+				Line: ev.Console.GetLine(),
+				At:   time.UnixMilli(ev.Console.GetAtUnixMilli()),
+			})
 			if len(lines) > scrollbackLines {
 				lines = lines[len(lines)-scrollbackLines:]
 			}
@@ -183,12 +186,29 @@ func (h *Hub) LatestStats(serverID uuid.UUID) (*StatsSnapshot, bool) {
 	return s, ok
 }
 
+// consoleEntry is one buffered console line with its daemon timestamp.
+type consoleEntry struct {
+	Line string
+	At   time.Time
+}
+
 // Scrollback returns the buffered recent console lines.
 func (h *Hub) Scrollback(serverID uuid.UUID) []string {
+	entries := h.ScrollbackEntries(serverID)
+	out := make([]string, len(entries))
+	for i, e := range entries {
+		out[i] = e.Line
+	}
+	return out
+}
+
+// ScrollbackEntries returns the buffered console lines with timestamps.
+func (h *Hub) ScrollbackEntries(serverID uuid.UUID) []consoleEntry {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	out := make([]string, len(h.scrollback[serverID]))
-	copy(out, h.scrollback[serverID])
+	in := h.scrollback[serverID]
+	out := make([]consoleEntry, len(in))
+	copy(out, in)
 	return out
 }
 

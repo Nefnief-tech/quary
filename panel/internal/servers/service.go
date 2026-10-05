@@ -11,12 +11,14 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"regexp"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"quarry.dev/quarry/panel/internal/consolelog"
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/lifecycle"
@@ -53,6 +55,9 @@ type Config struct {
 	// Map describes the preinstalled BlueMap webserver binding; nil when
 	// the runner or MC version cannot host one.
 	Map *MapConfig `json:"map,omitempty"`
+	// Expose tracks the playit.gg tunnel plugin state observed on the
+	// console: the claim link and, once claimed, the public address.
+	Expose *ExposeConfig `json:"expose,omitempty"`
 }
 
 // MapConfig is the second allocation the map webserver publishes on.
@@ -62,33 +67,79 @@ type MapConfig struct {
 	Version string `json:"version,omitempty"`
 }
 
+// ExposeConfig is the playit.gg companion plugin state.
+type ExposeConfig struct {
+	Installed bool   `json:"installed"`
+	ClaimURL  string `json:"claim_url,omitempty"`
+	Address   string `json:"address,omitempty"`
+}
+
+// Fixed extra filenames: the daemon removes older versioned variants of a
+// fixed-name jar, so version switches replace instead of accumulate.
+const bluemapFilename = "bluemap.jar"
+const playitFilename = "playit-companion.jar"
+
+// playitProject is the Playit Companion Modrinth slug (official playit.gg
+// plugin; prints a claim URL on the console after install).
+const playitProject = "playit-companion"
+
+// PlayitProject and PlayitFilename are used by the expose install handler.
+const (
+	PlayitProject  = playitProject
+	PlayitFilename = playitFilename
+)
+
+// MarkExposeInstalled records that the playit companion plugin landed.
+func (s *Service) MarkExposeInstalled(ctx context.Context, serverID uuid.UUID) error {
+	sv, err := s.q.GetServer(ctx, serverID)
+	if err != nil {
+		return err
+	}
+	var cfg Config
+	if err := json.Unmarshal(sv.Config, &cfg); err != nil {
+		cfg = Config{}
+	}
+	if cfg.Expose == nil {
+		cfg.Expose = &ExposeConfig{}
+	}
+	cfg.Expose.Installed = true
+	return s.q.UpdateServerConfig(ctx, gen.UpdateServerConfigParams{
+		ID: serverID, Config: mustJSON(cfg),
+	})
+}
+
+// Console patterns the panel watches for (playit.gg integration).
+var claimURLRe = regexp.MustCompile(`https://playit\.gg/claim/[A-Za-z0-9]+`)
+var playitAddrRe = regexp.MustCompile(`\b([a-z0-9][a-z0-9-]*\.playit\.gg)\b`)
+
 // mapRunner maps a runner to its Modrinth loader and content dir for the
 // preinstalled map; vanilla has no plugin loader.
-func mapRunner(runnerID string) (loader, contentDir string, ok bool) {
+func mapRunner(runnerID string) (loader string, ok bool) {
 	switch runnerID {
 	case "paper":
-		return "paper", "plugins", true
+		return "paper", true
 	case "fabric":
-		return "fabric", "mods", true
+		return "fabric", true
 	default:
-		return "", "", false
+		return "", false
 	}
 }
 
 type Service struct {
-	pool     *pgxpool.Pool
-	q        *gen.Queries
-	hub      *hub.Hub
-	channels *nodes.ChannelManager
-	catalog  *runners.Catalog
-	modrinth *marketplace.Modrinth
-	log      *slog.Logger
+	pool      *pgxpool.Pool
+	q         *gen.Queries
+	hub       *hub.Hub
+	channels  *nodes.ChannelManager
+	catalog   *runners.Catalog
+	modrinth  *marketplace.Modrinth
+	persister *consolelog.Persister
+	log       *slog.Logger
 
 	mu              sync.Mutex
 	pendingRestarts map[uuid.UUID]bool
 }
 
-func NewService(pool *pgxpool.Pool, q *gen.Queries, hb *hub.Hub, channels *nodes.ChannelManager, catalog *runners.Catalog, modrinth *marketplace.Modrinth, log *slog.Logger) *Service {
+func NewService(pool *pgxpool.Pool, q *gen.Queries, hb *hub.Hub, channels *nodes.ChannelManager, catalog *runners.Catalog, modrinth *marketplace.Modrinth, persister *consolelog.Persister, log *slog.Logger) *Service {
 	return &Service{
 		pool:            pool,
 		q:               q,
@@ -96,6 +147,7 @@ func NewService(pool *pgxpool.Pool, q *gen.Queries, hb *hub.Hub, channels *nodes
 		channels:        channels,
 		catalog:         catalog,
 		modrinth:        modrinth,
+		persister:       persister,
 		log:             log,
 		pendingRestarts: map[uuid.UUID]bool{},
 	}
@@ -103,11 +155,15 @@ func NewService(pool *pgxpool.Pool, q *gen.Queries, hb *hub.Hub, channels *nodes
 
 // CreateRequest is the create-server input.
 type CreateRequest struct {
-	Name      string    `json:"name"`
-	NodeID    uuid.UUID `json:"node_id"`
-	Runner    string    `json:"runner"`
-	MCVersion string    `json:"mc_version"`
-	MemoryMB  int32     `json:"memory_mb"`
+	Name       string    `json:"name"`
+	NodeID     uuid.UUID `json:"node_id"`
+	Runner     string    `json:"runner"`
+	MCVersion  string    `json:"mc_version"`
+	MemoryMB   int32     `json:"memory_mb"`
+	CPUPercent int32     `json:"cpu_percent"`
+	// WithMap preinstalls the BlueMap plugin where supported. Defaults to
+	// true; explicit false skips it (and its second port allocation).
+	WithMap *bool `json:"with_map"`
 }
 
 // Create resolves the artifact, claims a free allocation, persists the
@@ -119,6 +175,16 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	}
 	if req.MemoryMB == 0 {
 		req.MemoryMB = 2048
+	}
+	if req.CPUPercent == 0 {
+		req.CPUPercent = 200
+	}
+	if req.CPUPercent < 50 || req.CPUPercent > 3200 {
+		return gen.Server{}, fmt.Errorf("cpu percent must be between 50 and 3200")
+	}
+	if req.WithMap == nil {
+		wantMap := true
+		req.WithMap = &wantMap
 	}
 	if req.NodeID == uuid.Nil {
 		node, err := s.q.PickNodeWithFreeAllocation(ctx)
@@ -139,8 +205,11 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	// BlueMap is preinstalled where it can run: plugin loaders on Java 21+.
 	// Resolution is best-effort: a missing BlueMap build for this MC version
 	// creates the server without a map instead of failing the create.
-	mapLoader, mapContentDir, mapOK := mapRunner(req.Runner)
+	mapLoader, mapOK := mapRunner(req.Runner)
 	if mapOK && java < 21 {
+		mapOK = false
+	}
+	if !*req.WithMap {
 		mapOK = false
 	}
 	var mapDL *marketplace.ResolvedDownload
@@ -217,7 +286,7 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 		Status:          string(lifecycle.Installing),
 		MemoryMb:        req.MemoryMB,
 		DiskMb:          10240,
-		CpuPercent:      200,
+		CpuPercent:      req.CPUPercent,
 		Config:          cfgRaw,
 	})
 	if err != nil {
@@ -228,30 +297,58 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 	}
 
 	// Install runs asynchronously on the node; progress streams as events.
+	var extras []extraDownload
+	if mapDL != nil {
+		extras = append(extras, extraDownload{
+			loader:     mapLoader,
+			dl:         *mapDL,
+			filename:   bluemapFilename,
+			acceptNote: true,
+		})
+	}
+	go s.dispatchInstall(serverID, req.NodeID, req.Runner, req.MCVersion, cfg, req.MemoryMB, artifact, extras)
+
+	return server, nil
+}
+
+// extraDownload is an auxiliary artifact (BlueMap, playit.gg companion)
+// installed alongside the server jar.
+type extraDownload struct {
+	loader string
+	dl     marketplace.ResolvedDownload
+	// filename is fixed (not version-named) so reinstalls replace the jar.
+	filename string
+	// acceptNote writes BlueMap's accept-download=true config.
+	acceptNote bool
+}
+
+// dispatchInstall sends the InstallServer command and routes failures into
+// the status machine. It owns the goroutine lifecycle for create/switch.
+func (s *Service) dispatchInstall(serverID, nodeID uuid.UUID, runnerID, mcVersion string, cfg Config, memoryMB int32, artifact runners.Artifact, extras []extraDownload) {
 	go func() {
 		bg, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 		defer cancel()
 		install := &nodesv1.InstallServer{
 			ServerId:       serverID.String(),
-			Runner:         req.Runner,
-			McVersion:      req.MCVersion,
+			Runner:         runnerID,
+			McVersion:      mcVersion,
 			ArtifactUrl:    artifact.URL,
 			ArtifactSha256: artifact.SHA256,
 			ArtifactName:   artifact.Name,
 			Image:          cfg.Image,
 			Launch:         cfg.Launch,
-			MemoryMb:       req.MemoryMB,
+			MemoryMb:       memoryMB,
 			BindIp:         cfg.BindIP,
 			BindPort:       cfg.BindPort,
 		}
-		if mapDL != nil {
+		for _, ex := range extras {
 			install.Extras = append(install.Extras, &nodesv1.ExtraFile{
-				Url:      mapDL.URL,
-				Sha512:   mapDL.SHA512,
-				Filename: path.Join(mapContentDir, mapDL.Filename),
+				Url:      ex.dl.URL,
+				Sha512:   ex.dl.SHA512,
+				Filename: path.Join(ex.loader, ex.filename),
 			})
 		}
-		result, err := s.channels.Send(bg, req.NodeID, &nodesv1.Command{
+		result, err := s.channels.Send(bg, nodeID, &nodesv1.Command{
 			Action: &nodesv1.Command_InstallServer{InstallServer: install},
 		})
 		if err != nil || !result.GetOk() {
@@ -268,8 +365,144 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 			s.handleStatus(serverID, &nodesv1.StatusChange{Status: "crashed", Detail: detail})
 		}
 	}()
+}
 
-	return server, nil
+// SwitchVersionRequest is the settings-tab version-switch input.
+type SwitchVersionRequest struct {
+	Runner    string `json:"runner"`
+	MCVersion string `json:"mc_version"`
+}
+
+// SwitchVersion replaces the server jar (and its runner/launch config)
+// while keeping worlds, configs and ports. The server must be stopped; it
+// re-enters installing and can be started again once the download lands.
+func (s *Service) SwitchVersion(ctx context.Context, sv gen.Server, req SwitchVersionRequest) (gen.Server, []string, error) {
+	var notes []string
+	status := lifecycle.Status(sv.Status)
+	if status != lifecycle.Offline && status != lifecycle.Crashed {
+		return sv, nil, fmt.Errorf("%w: stop the server before switching version", ErrBadState)
+	}
+	if req.Runner == "" {
+		req.Runner = sv.Runner
+	}
+	if req.MCVersion == "" {
+		req.MCVersion = sv.McVersion
+	}
+	if req.Runner == sv.Runner && req.MCVersion == sv.McVersion {
+		return sv, nil, fmt.Errorf("server already runs %s %s", sv.Runner, sv.McVersion)
+	}
+	if !s.channels.Connected(sv.NodeID) {
+		return sv, nil, ErrNodeOffline
+	}
+	runner, artifact, err := s.catalog.Resolve(ctx, req.Runner, req.MCVersion)
+	if err != nil {
+		return sv, nil, err
+	}
+	java := runner.JavaVersion(req.MCVersion)
+
+	var cfg Config
+	if err := json.Unmarshal(sv.Config, &cfg); err != nil {
+		return sv, nil, fmt.Errorf("server config unreadable")
+	}
+	cfg.Image = runners.ImageForJava(java)
+	cfg.Launch = runner.Launch(int(sv.MemoryMb))
+
+	// Keep the map working on the new version if we can; otherwise drop it.
+	var extras []extraDownload
+	if sv.MapAllocationID != nil {
+		mapLoader, mapOK := mapRunner(req.Runner)
+		if mapOK && java < 21 {
+			mapOK = false
+		}
+		if mapOK {
+			if dl, err := s.modrinth.Resolve(ctx, mapProject, req.MCVersion, mapLoader); err == nil {
+				cfg.Map.Version = dl.Version
+				extras = append(extras, extraDownload{
+					loader: mapLoader, dl: dl, filename: bluemapFilename, acceptNote: true,
+				})
+			} else {
+				cfg.Map = nil
+				_ = s.q.SetServerMapAllocation(ctx, gen.SetServerMapAllocationParams{ID: sv.ID, MapAllocationID: nil})
+				notes = append(notes, "map removed: BlueMap has no build for "+req.MCVersion)
+			}
+		} else {
+			cfg.Map = nil
+			_ = s.q.SetServerMapAllocation(ctx, gen.SetServerMapAllocationParams{ID: sv.ID, MapAllocationID: nil})
+			notes = append(notes, "map removed: the new runner cannot host BlueMap")
+		}
+	}
+	go s.dispatchInstall(sv.ID, sv.NodeID, req.Runner, req.MCVersion, cfg, sv.MemoryMb, artifact, extras)
+
+	if err := s.q.SetServerVersion(ctx, gen.SetServerVersionParams{
+		ID: sv.ID, Runner: req.Runner, McVersion: req.MCVersion, Config: mustJSON(cfg),
+	}); err != nil {
+		return sv, nil, err
+	}
+	// installing is normally a create-time state; a switch re-enters it
+	// directly from a stopped state by design.
+	if err := s.q.SetServerStatus(ctx, gen.SetServerStatusParams{
+		ID: sv.ID, Status: string(lifecycle.Installing),
+	}); err != nil {
+		return sv, nil, err
+	}
+	s.hub.Publish(hub.Event{Type: hub.EventStatus, ServerID: sv.ID, Status: string(lifecycle.Installing),
+		Detail: "switching to " + req.Runner + " " + req.MCVersion})
+	notes = append(notes, fmt.Sprintf("switching to %s %s (Java %d) — start once installed", req.Runner, req.MCVersion, java))
+
+	updated, err := s.q.GetServer(ctx, sv.ID)
+	if err != nil {
+		return sv, notes, err
+	}
+	return updated, notes, nil
+}
+
+// watchExpose tracks the playit.gg companion plugin's console output: the
+// claim link after install and the public tunnel address once claimed.
+func (s *Service) watchExpose(serverID uuid.UUID, line string) {
+	var claim, addr string
+	if m := claimURLRe.FindString(line); m != "" {
+		claim = m
+	}
+	if m := playitAddrRe.FindStringSubmatch(line); m != nil {
+		addr = m[1]
+	}
+	if claim == "" && addr == "" {
+		return
+	}
+	sv, err := s.q.GetServer(context.Background(), serverID)
+	if err != nil {
+		return
+	}
+	var cfg Config
+	if err := json.Unmarshal(sv.Config, &cfg); err != nil || cfg.Expose == nil {
+		// No expose record (plugin installed via files, or pre-existing):
+		// start tracking from what the console shows.
+		cfg.Expose = &ExposeConfig{Installed: true}
+	}
+	changed := false
+	if claim != "" && cfg.Expose.ClaimURL != claim {
+		cfg.Expose.ClaimURL = claim
+		changed = true
+	}
+	if addr != "" && cfg.Expose.Address != addr {
+		cfg.Expose.Address = addr
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	if err := s.q.UpdateServerConfig(context.Background(), gen.UpdateServerConfigParams{
+		ID: serverID, Config: mustJSON(cfg),
+	}); err != nil {
+		s.log.Warn("expose state persist failed", "server_id", serverID, "err", err)
+	}
+	s.hub.Publish(hub.Event{Type: hub.EventStatus, ServerID: serverID, Status: sv.Status,
+		Detail: "public address: " + cfg.Expose.Address})
+}
+
+func mustJSON(v any) []byte {
+	raw, _ := json.Marshal(v)
+	return raw
 }
 
 // Power performs a validated power action. Restart is a composite: stop,
@@ -366,6 +599,11 @@ func (s *Service) HandleEvent(ev *nodesv1.Event) {
 	}
 	switch payload := ev.GetPayload().(type) {
 	case *nodesv1.Event_Console:
+		line := payload.Console.GetLine()
+		if s.persister != nil {
+			s.persister.Record(serverID, time.UnixMilli(payload.Console.GetAtUnixMilli()), line)
+		}
+		s.watchExpose(serverID, line)
 		s.hub.Publish(hub.Event{Type: hub.EventConsole, ServerID: serverID, Console: payload.Console})
 	case *nodesv1.Event_Stats:
 		s.hub.Publish(hub.Event{Type: hub.EventStats, ServerID: serverID, Stats: payload.Stats})

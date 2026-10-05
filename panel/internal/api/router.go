@@ -67,6 +67,16 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("GET /api/v1/servers/{id}/bans", s.requirePerm("console.read", http.HandlerFunc(s.listServerBans)))
 	mux.Handle("DELETE /api/v1/servers/{id}/bans/{banId}", s.requirePerm("console.write", http.HandlerFunc(s.deleteServerBan)))
 
+	// Whitelist
+	mux.Handle("GET /api/v1/servers/{id}/whitelist", s.requirePerm("console.read", http.HandlerFunc(s.whitelistState)))
+	mux.Handle("POST /api/v1/servers/{id}/whitelist", s.requirePerm("console.write", http.HandlerFunc(s.whitelistAdd)))
+	mux.Handle("DELETE /api/v1/servers/{id}/whitelist", s.requirePerm("console.write", http.HandlerFunc(s.whitelistRemove)))
+	mux.Handle("POST /api/v1/servers/{id}/whitelist/toggle", s.requirePerm("console.write", http.HandlerFunc(s.whitelistToggle)))
+
+	// Version switch + public exposure (playit.gg)
+	mux.Handle("POST /api/v1/servers/{id}/version", s.requireAuth(http.HandlerFunc(s.switchVersion)))
+	mux.Handle("POST /api/v1/servers/{id}/expose", s.requirePerm("plugin.install", http.HandlerFunc(s.exposeInstall)))
+
 	// Server files
 	mux.Handle("GET /api/v1/servers/{id}/files", s.requirePerm("file.read", http.HandlerFunc(s.listServerFiles)))
 	mux.Handle("GET /api/v1/servers/{id}/files/content", s.requirePerm("file.read", http.HandlerFunc(s.readServerFile)))

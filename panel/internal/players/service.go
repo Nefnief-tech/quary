@@ -8,6 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +21,9 @@ import (
 	"quarry.dev/quarry/panel/internal/nodes"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
+
+// listRe tolerates log prefixes ("[12:34:56] [Server thread/INFO]: ").
+var listRe = regexp.MustCompile(`There are (\d+) of a max of (\d+) players online(?::\s*(.*))?`)
 
 type Service struct {
 	q        *gen.Queries
@@ -62,8 +68,11 @@ func (s *Service) pollServer(ctx context.Context, id uuid.UUID) {
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	result, err := s.channels.Send(sendCtx, sv.NodeID, &nodesv1.Command{
-		Action: &nodesv1.Command_PollPlayers{PollPlayers: &nodesv1.PollPlayers{
+		Action: &nodesv1.Command_RunConsole{RunConsole: &nodesv1.RunConsole{
 			ServerId: id.String(),
+			Input:    "list",
+			Expect:   `There are \d+ of a max of \d+ players online`,
+			MaxLines: 1,
 		}},
 	})
 	cancel()
@@ -74,13 +83,37 @@ func (s *Service) pollServer(ctx context.Context, id uuid.UUID) {
 		}
 		return
 	}
-	var list hub.PlayerList
-	if err := json.Unmarshal(result.GetBody(), &list); err != nil {
-		s.log.Warn("player poll body undecodable", "server_id", id, "err", err)
+	var cap struct {
+		Lines []string `json:"lines"`
+	}
+	if err := json.Unmarshal(result.GetBody(), &cap); err != nil || len(cap.Lines) == 0 {
 		return
 	}
-	if list.Names == nil {
-		list.Names = []string{}
+	list := parseList(cap.Lines[len(cap.Lines)-1])
+	if list == nil {
+		return
 	}
-	s.hub.SetPlayers(id, &list)
+	s.hub.SetPlayers(id, list)
+}
+
+// parseList extracts the player list from one console `list` reply line.
+func parseList(line string) *hub.PlayerList {
+	m := listRe.FindStringSubmatch(line)
+	if m == nil {
+		return nil
+	}
+	online, _ := strconv.Atoi(m[1])
+	max, _ := strconv.Atoi(m[2])
+	var names []string
+	if raw := strings.TrimSpace(m[3]); raw != "" {
+		for _, n := range strings.Split(raw, ", ") {
+			if n = strings.TrimSpace(n); n != "" {
+				names = append(names, n)
+			}
+		}
+	}
+	if names == nil {
+		names = []string{}
+	}
+	return &hub.PlayerList{Names: names, Online: online, Max: max}
 }

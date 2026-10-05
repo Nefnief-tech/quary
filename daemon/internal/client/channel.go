@@ -147,8 +147,8 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		return m.Kill(ctx, action.KillServer, em)
 	case *nodesv1.Command_SendCommand:
 		return m.SendCommand(action.SendCommand)
-	case *nodesv1.Command_PollPlayers:
-		list, err := m.PollPlayers(ctx, action.PollPlayers)
+	case *nodesv1.Command_RunConsole:
+		list, err := m.RunConsole(ctx, action.RunConsole)
 		if err != nil {
 			return err
 		}

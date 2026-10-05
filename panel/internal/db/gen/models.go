@@ -42,6 +42,13 @@ type AuditLog struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
+type ConsoleLine struct {
+	ID       int64     `json:"id"`
+	ServerID uuid.UUID `json:"server_id"`
+	At       time.Time `json:"at"`
+	Line     string    `json:"line"`
+}
+
 type Node struct {
 	ID            uuid.UUID  `json:"id"`
 	Name          string     `json:"name"`

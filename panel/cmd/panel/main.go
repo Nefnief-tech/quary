@@ -25,6 +25,7 @@ import (
 	"quarry.dev/quarry/panel/internal/audit"
 	"quarry.dev/quarry/panel/internal/auth"
 	"quarry.dev/quarry/panel/internal/config"
+	"quarry.dev/quarry/panel/internal/consolelog"
 	"quarry.dev/quarry/panel/internal/db"
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/hub"
@@ -146,7 +147,9 @@ func cmdServe() {
 
 	// Server orchestration (create/power/events)
 	modrinth := marketplace.NewModrinth()
-	serverSvc := servers.NewService(rt.pool, rt.q, hub, chanMgr, catalog, modrinth, log)
+	consolePersister := consolelog.NewPersister(rt.pool, rt.q, log)
+	serverSvc := servers.NewService(rt.pool, rt.q, hub, chanMgr, catalog, modrinth, consolePersister, log)
+	go consolePersister.Run(ctx)
 
 	// Keeps online-player snapshots fresh for watched servers.
 	playerSvc := players.NewService(rt.q, chanMgr, hub, log)
@@ -209,6 +212,9 @@ func cleanupLoop(ctx context.Context, q *gen.Queries, log *slog.Logger) {
 		case <-ticker.C:
 			if err := q.DeleteExpiredSessions(ctx); err != nil {
 				log.Warn("session cleanup failed", "err", err)
+			}
+			if _, err := q.PruneConsoleLines(ctx); err != nil {
+				log.Warn("console prune failed", "err", err)
 			}
 		}
 	}

@@ -215,6 +215,20 @@ func (q *Queries) SetServerAllocation(ctx context.Context, arg SetServerAllocati
 	return err
 }
 
+const setServerMapAllocation = `-- name: SetServerMapAllocation :exec
+UPDATE servers SET map_allocation_id = $2, updated_at = now() WHERE id = $1
+`
+
+type SetServerMapAllocationParams struct {
+	ID              uuid.UUID  `json:"id"`
+	MapAllocationID *uuid.UUID `json:"map_allocation_id"`
+}
+
+func (q *Queries) SetServerMapAllocation(ctx context.Context, arg SetServerMapAllocationParams) error {
+	_, err := q.db.Exec(ctx, setServerMapAllocation, arg.ID, arg.MapAllocationID)
+	return err
+}
+
 const setServerResources = `-- name: SetServerResources :exec
 UPDATE servers SET memory_mb = $2, cpu_percent = $3, updated_at = now() WHERE id = $1
 `
@@ -241,6 +255,28 @@ type SetServerStatusParams struct {
 
 func (q *Queries) SetServerStatus(ctx context.Context, arg SetServerStatusParams) error {
 	_, err := q.db.Exec(ctx, setServerStatus, arg.ID, arg.Status)
+	return err
+}
+
+const setServerVersion = `-- name: SetServerVersion :exec
+UPDATE servers SET runner = $2, mc_version = $3, config = $4, updated_at = now()
+WHERE id = $1
+`
+
+type SetServerVersionParams struct {
+	ID        uuid.UUID `json:"id"`
+	Runner    string    `json:"runner"`
+	McVersion string    `json:"mc_version"`
+	Config    []byte    `json:"config"`
+}
+
+func (q *Queries) SetServerVersion(ctx context.Context, arg SetServerVersionParams) error {
+	_, err := q.db.Exec(ctx, setServerVersion,
+		arg.ID,
+		arg.Runner,
+		arg.McVersion,
+		arg.Config,
+	)
 	return err
 }
 

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, type Server } from '$lib/api';
+	import { api, type Runner, type Server } from '$lib/api';
 	import TimeChart from '$lib/components/TimeChart.svelte';
 
 	let server = $state<Server | null>(null);
@@ -67,6 +67,7 @@
 	function openPlayers() {
 		tab = 'players';
 		loadBans();
+		loadWhitelist();
 	}
 
 	async function playerAction(action: 'kick' | 'ban' | 'ban_ip' | 'op' | 'deop', name: string, ip = '') {
@@ -103,6 +104,108 @@
 			await loadBans();
 		} catch (err) {
 			playerNote = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	// whitelist state
+	let whitelist = $state<{ enabled: boolean; names: string[] }>({ enabled: false, names: [] });
+	let whitelistAddName = $state('');
+	let busyWhitelist = $state(false);
+
+	async function loadWhitelist() {
+		try {
+			whitelist = await api.get<typeof whitelist>(`/api/v1/servers/${id}/whitelist`);
+		} catch {
+			/* console read failed; leave current state */
+		}
+	}
+
+	async function whitelistAdd(e: SubmitEvent) {
+		e.preventDefault();
+		if (!whitelistAddName) return;
+		busyWhitelist = true;
+		playerNote = '';
+		try {
+			await api.post(`/api/v1/servers/${id}/whitelist`, { name: whitelistAddName });
+			whitelistAddName = '';
+			await loadWhitelist();
+		} catch (err) {
+			playerNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			busyWhitelist = false;
+		}
+	}
+
+	async function whitelistRemove(name: string) {
+		busyWhitelist = true;
+		try {
+			await api.del(`/api/v1/servers/${id}/whitelist?name=${encodeURIComponent(name)}`);
+			await loadWhitelist();
+		} catch (err) {
+			playerNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			busyWhitelist = false;
+		}
+	}
+
+	async function whitelistToggle() {
+		busyWhitelist = true;
+		try {
+			await api.post(`/api/v1/servers/${id}/whitelist/toggle`, { enabled: !whitelist.enabled });
+			await loadWhitelist();
+		} catch (err) {
+			playerNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			busyWhitelist = false;
+		}
+	}
+
+	// version switcher state
+	let runners = $state<Runner[]>([]);
+	let vRunner = $state('');
+	let vVersion = $state('');
+	let switchBusy = $state(false);
+
+	async function switchVersion() {
+		if (!vRunner || !vVersion) return;
+		if (
+			!confirm(
+				`Switch to ${vRunner} ${vVersion}? Worlds and configs are kept; the jar is replaced and the server must be started afterwards.`
+			)
+		)
+			return;
+		switchBusy = true;
+		error = '';
+		try {
+			const res = await api.post<{ notes: string[]; server: Server }>(
+				`/api/v1/servers/${id}/version`,
+				{ runner: vRunner, mc_version: vVersion }
+			);
+			server = res.server;
+			settingsNotes = res.notes;
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			switchBusy = false;
+		}
+	}
+
+	// playit.gg expose state
+	let exposeBusy = $state(false);
+	let exposeNote = $state('');
+
+	async function installExpose() {
+		if (!confirm('Install the playit.gg companion plugin? After the next start a claim link appears here to make the server public.')) return;
+		exposeBusy = true;
+		exposeNote = '';
+		try {
+			const res = await api.post<{ hint: string }>(`/api/v1/servers/${id}/expose`, {});
+			if (server) server = { ...server, expose: { installed: true } };
+			exposeNote = res.hint;
+		} catch (err) {
+			exposeNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			exposeBusy = false;
 		}
 	}
 
@@ -181,6 +284,11 @@
 		tab = 'settings';
 		if (server) {
 			settings = { name: server.name, memory_mb: server.memory_mb, cpu_percent: server.cpu_percent };
+			vRunner = server.runner;
+			vVersion = server.mc_version;
+		}
+		if (runners.length === 0) {
+			runners = await api.get<Runner[]>('/api/v1/runners').catch(() => []);
 		}
 		try {
 			allocs = await api.get<typeof allocs>(`/api/v1/servers/${id}/allocations`);
@@ -354,20 +462,11 @@
 		seedActivity(server);
 		// Flush the DOM so the console element exists, then create the
 		// terminal *before* opening the socket — deterministic ordering.
+		// All tab panels stay mounted (hidden via CSS), so the terminal is
+		// created exactly once and survives tab switches.
 		await tick();
 		if (consoleEl && !term) await initTerminal(consoleEl);
 		connectConsole();
-	});
-
-	// The console div is inside {#if server}, so it is recreated on every
-	// Console-tab switch; this rebinds a fresh terminal when that happens.
-	let termBoundTo: HTMLDivElement | null = null;
-	$effect(() => {
-		const el = consoleEl;
-		if (el && el !== termBoundTo && tab === 'console') {
-			termBoundTo = el;
-			void initTerminal(el);
-		}
 	});
 
 	async function initTerminal(el: HTMLDivElement) {
@@ -375,8 +474,7 @@
 			import('@xterm/xterm'),
 			import('@xterm/addon-fit')
 		]);
-		if (term && termBoundTo === el) return; // already bound to this element
-		term?.dispose();
+		if (term) return; // panels stay mounted; the terminal is created once
 		term = new Terminal({
 			convertEol: true,
 			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -524,137 +622,84 @@
 		<span class="chip ml-auto">{server.ip}:{server.port}</span>
 	</div>
 
-	<!-- Power + stats row -->
-	<div class="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
-		<div class="card flex flex-wrap items-center gap-2 p-3">
-			<button
-				class="btn btn-primary"
-				disabled={!['offline', 'crashed'].includes(server.status)}
-				onclick={() => power('start')}><i class="ph ph-play"></i>Start</button
-			>
-			<button
-				class="btn btn-secondary"
-				disabled={!['running', 'starting', 'stopping'].includes(server.status)}
-				onclick={() => power('stop')}><i class="ph ph-stop"></i>Stop</button
-			>
-			<button
-				class="btn btn-secondary"
-				disabled={!['running', 'crashed'].includes(server.status)}
-				onclick={() => power('restart')}><i class="ph ph-arrows-clockwise"></i>Restart</button
-			>
-			<button
-				class="btn btn-danger"
-				disabled={!['running', 'starting', 'stopping', 'crashed'].includes(server.status)}
-				onclick={() => power('kill')}><i class="ph ph-x"></i>Kill</button
-			>
-		</div>
-		<div class="card p-3">
-			<div class="flex items-center justify-between text-xs text-zinc-500">
-				<span>CPU</span><span class="mono text-zinc-300">{stats ? stats.cpu_percent.toFixed(1) : '–'}%</span>
-			</div>
-			<div class="mt-2.5 h-1 overflow-hidden rounded-full bg-zinc-800">
-				<div
-					class="h-full rounded-full bg-emerald-400 transition-all duration-500"
-					style="width: {cpuPct}%"
-				></div>
-			</div>
-		</div>
-		<div class="card p-3">
-			<div class="flex items-center justify-between text-xs text-zinc-500">
-				<span>Memory</span>
-				<span class="mono text-zinc-300">
-					{stats ? stats.memory_used_mb.toFixed(0) : '–'} /
-					{stats ? stats.memory_limit_mb.toFixed(0) : '–'} MiB
-				</span>
-			</div>
-			<div class="mt-2.5 h-1 overflow-hidden rounded-full bg-zinc-800">
-				<div
-					class="h-full rounded-full bg-sky-400 transition-all duration-500"
-					style="width: {memPct}%"
-				></div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Activity: last five minutes of CPU / RAM / players -->
-	<div class="card mb-6 p-4">
-		<div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-			<span>Activity</span>
-			<span class="font-normal normal-case text-zinc-600">last 5 minutes</span>
-			<span class="ml-auto flex flex-wrap items-center gap-3 font-normal">
-				<span class="flex items-center gap-1.5">
-					<span class="h-1 w-2.5 rounded-full bg-emerald-400"></span>
-					cpu <span class="mono text-zinc-400">{cpuPct.toFixed(0)}%</span>
-				</span>
-				<span class="flex items-center gap-1.5">
-					<span class="h-1 w-2.5 rounded-full bg-sky-400"></span>
-					ram <span class="mono text-zinc-400">{memPct.toFixed(0)}%</span>
-				</span>
-				<span class="flex items-center gap-1.5">
-					<span class="h-1 w-2.5 rounded-full bg-violet-400"></span>
-					players <span class="mono text-zinc-400">{players ? players.online : 0}</span>
-				</span>
-			</span>
-		</div>
-		<TimeChart
-			points={activity}
-			series={[{ color: '#34d399' }, { color: '#38bdf8' }, { color: '#a78bfa' }]}
-			height={72}
-		/>
-	</div>
-
 	{#if error}
 		<p class="mb-4 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
 			{error}
 		</p>
 	{/if}
 
-	<div class="mb-5 flex items-center gap-3">
-		<div class="tabs">
-			<button class={`tab ${tab === 'console' ? 'tab-active' : ''}`} onclick={() => (tab = 'console')}>
-				Console
-				{#if players && players.online > 0}
-					<span class="ml-1.5 rounded-full bg-emerald-500/15 px-1.5 text-[10px] font-semibold text-emerald-300">
-						{players.online}
-					</span>
-				{/if}
-			</button>
-			<button class={`tab ${tab === 'players' ? 'tab-active' : ''}`} onclick={openPlayers}>
-				Players
-			</button>
-			<button class={`tab ${tab === 'files' ? 'tab-active' : ''}`} onclick={() => (tab = 'files')}>
-				Files
-			</button>
-			{#if hasMarket}
-				<button class={`tab ${tab === 'plugins' ? 'tab-active' : ''}`} onclick={openPlugins}>
-					Plugins
-				</button>
-			{/if}
-			{#if server.map_url}
-				<button class={`tab ${tab === 'map' ? 'tab-active' : ''}`} onclick={() => (tab = 'map')}>
-					Map
-				</button>
-			{/if}
-			<button class={`tab ${tab === 'settings' ? 'tab-active' : ''}`} onclick={openSettings}>
-				Settings
-			</button>
-		</div>
-		{#if tab === 'console'}
-			<span class="ml-auto flex items-center gap-2 text-xs text-zinc-500">
-				<span
-					class={`h-2 w-2 rounded-full ${wsState === 'live' ? 'animate-pulse bg-emerald-400' : wsState === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-rose-500'}`}
-				></span>
-				{wsState === 'live'
-					? 'live'
-					: wsState === 'connecting'
-						? 'connecting…'
-						: 'reconnecting…'}
-			</span>
-		{/if}
-	</div>
+	<!-- Content grid: tabs + panels left, live stats sidebar right -->
+	<div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
+		<div class="min-w-0">
+			<!-- Power row -->
+			<div class="card mb-4 flex flex-wrap items-center gap-2 p-3">
+				<button
+					class="btn btn-primary"
+					disabled={!['offline', 'crashed'].includes(server.status)}
+					onclick={() => power('start')}><i class="ph ph-play"></i>Start</button
+				>
+				<button
+					class="btn btn-secondary"
+					disabled={!['running', 'starting', 'stopping'].includes(server.status)}
+					onclick={() => power('stop')}><i class="ph ph-stop"></i>Stop</button
+				>
+				<button
+					class="btn btn-secondary"
+					disabled={!['running', 'crashed'].includes(server.status)}
+					onclick={() => power('restart')}><i class="ph ph-arrows-clockwise"></i>Restart</button
+				>
+				<button
+					class="btn btn-danger"
+					disabled={!['running', 'starting', 'stopping', 'crashed'].includes(server.status)}
+					onclick={() => power('kill')}><i class="ph ph-x"></i>Kill</button
+				>
+				<span class="ml-auto flex items-center gap-2 text-xs text-zinc-500">
+					<span
+						class={`h-2 w-2 rounded-full ${wsState === 'live' ? 'animate-pulse bg-emerald-400' : wsState === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-rose-500'}`}
+					></span>
+					{wsState === 'live'
+						? 'live'
+						: wsState === 'connecting'
+							? 'connecting…'
+							: 'reconnecting…'}
+				</span>
+			</div>
 
-	{#if tab === 'console'}
-		<div class="card overflow-hidden">
+			<div class="mb-4 flex items-center gap-3">
+				<div class="tabs">
+					<button class={`tab ${tab === 'console' ? 'tab-active' : ''}`} onclick={() => (tab = 'console')}>
+						Console
+						{#if players && players.online > 0}
+							<span class="ml-1.5 rounded-full bg-emerald-500/15 px-1.5 text-[10px] font-semibold text-emerald-300">
+								{players.online}
+							</span>
+						{/if}
+					</button>
+					<button class={`tab ${tab === 'players' ? 'tab-active' : ''}`} onclick={openPlayers}>
+						Players
+					</button>
+					<button class={`tab ${tab === 'files' ? 'tab-active' : ''}`} onclick={() => (tab = 'files')}>
+						Files
+					</button>
+					{#if hasMarket}
+						<button class={`tab ${tab === 'plugins' ? 'tab-active' : ''}`} onclick={openPlugins}>
+							Plugins
+						</button>
+					{/if}
+					{#if server.map_url}
+						<button class={`tab ${tab === 'map' ? 'tab-active' : ''}`} onclick={() => (tab = 'map')}>
+							Map
+						</button>
+					{/if}
+					<button class={`tab ${tab === 'settings' ? 'tab-active' : ''}`} onclick={openSettings}>
+						Settings
+					</button>
+				</div>
+			</div>
+
+			<!-- Console panel: stays mounted so tab switches never clear it -->
+			<div class={tab === 'console' ? '' : 'hidden'}>
+				<div class="card overflow-hidden">
 			<div class="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-2">
 				<span class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
 					{server.name}: console
@@ -688,7 +733,9 @@
 				</button>
 			</form>
 		</div>
-	{:else if tab === 'files'}
+	</div>
+
+	<div class={tab === 'files' ? '' : 'hidden'}>
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<div class="card p-5">
 				<div class="mb-2 flex items-center gap-2 text-sm">
@@ -748,7 +795,9 @@
 				{/if}
 			</div>
 		</div>
-	{:else if tab === 'players'}
+	</div>
+
+	<div class={tab === 'players' ? '' : 'hidden'}>
 		<div class="space-y-4">
 			{#if playerNote}
 				<p class="rounded-md border border-sky-400/20 bg-sky-400/5 px-3 py-2 text-sm text-sky-200">
@@ -905,10 +954,59 @@
 							Bans issued in-game do not appear here; the server's own ban list stays authoritative.
 						</p>
 					</div>
+
+					<div class="card p-5">
+						<h3 class="mb-3 flex items-center justify-between text-sm font-medium text-zinc-300">
+							Whitelist
+							<button
+								class={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 transition ${whitelist.enabled ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30' : 'bg-zinc-500/15 text-zinc-400 ring-zinc-500/30'}`}
+								disabled={busyWhitelist}
+								onclick={whitelistToggle}
+								title={whitelist.enabled ? 'Turn whitelist off' : 'Turn whitelist on'}
+							>
+								{whitelist.enabled ? 'on' : 'off'}
+							</button>
+						</h3>
+						<form class="mb-3 flex items-center gap-2" onsubmit={whitelistAdd}>
+							<input
+								class="input flex-1 py-1.5 font-mono text-sm"
+								placeholder="player name"
+								bind:value={whitelistAddName}
+								required
+							/>
+							<button type="submit" disabled={busyWhitelist} class="btn btn-secondary px-3 py-1.5 text-xs">
+								Add
+							</button>
+						</form>
+						<ul class="space-y-1">
+							{#each whitelist.names as name (name)}
+								<li class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-800/50">
+									<i class="ph ph-list-checks text-zinc-600"></i>
+									<span class="truncate font-mono text-xs text-zinc-300">{name}</span>
+									<button
+										class="ml-auto text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-rose-300"
+										onclick={() => whitelistRemove(name)}
+										title="Remove from whitelist"
+									>
+										<i class="ph ph-trash text-sm"></i>
+									</button>
+								</li>
+							{:else}
+								<li class="px-2 py-1.5 text-xs text-zinc-600">
+									Nobody whitelisted. With the whitelist on, only listed players can join.
+								</li>
+							{/each}
+						</ul>
+						<p class="mt-3 border-t border-zinc-800/60 pt-3 text-xs text-zinc-600">
+							Whitelist state is read from the server; names apply immediately.
+						</p>
+					</div>
 				</div>
 			</div>
 		</div>
-	{:else if tab === 'map'}
+	</div>
+
+	<div class={tab === 'map' ? '' : 'hidden'}>
 		<div class="space-y-3">
 			<div class="flex flex-wrap items-center gap-3">
 				<span class="chip font-mono">{server.map_url}</span>
@@ -930,7 +1028,9 @@
 				></iframe>
 			</div>
 		</div>
-	{:else if tab === 'plugins'}
+	</div>
+
+	<div class={tab === 'plugins' ? '' : 'hidden'}>
 		<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
 			<!-- Explorer: search + results -->
 			<div class="space-y-4 lg:col-span-2">
@@ -1074,7 +1174,9 @@
 				</div>
 			</div>
 		</div>
-	{:else}
+	</div>
+
+	<div class={tab === 'settings' ? '' : 'hidden'}>
 		<div class="space-y-6">
 			{#if settingsNotes.length}
 				<p class="rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
@@ -1154,6 +1256,48 @@
 				</ul>
 			</div>
 
+			<div class="card p-6">
+				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-zinc-500">Version</h3>
+				<p class="mb-4 text-xs text-zinc-600">
+					Switch the server software or Minecraft version. Worlds, configs and ports are kept;
+					the server jar is replaced and the server must be started again.
+				</p>
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+					<label class="block">
+						<span class="mb-1.5 block text-sm font-medium text-zinc-400">Server software</span>
+						<select
+							class="select"
+							bind:value={vRunner}
+							onchange={() => {
+								const r = runners.find((x) => x.id === vRunner);
+								vVersion = r?.versions.find((v) => v.stable)?.mc_version ?? '';
+							}}
+						>
+							{#each runners as r (r.id)}
+								<option value={r.id}>{r.id}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="block">
+						<span class="mb-1.5 block text-sm font-medium text-zinc-400">Minecraft version</span>
+						<select class="select" bind:value={vVersion}>
+							{#each runners.find((r) => r.id === vRunner)?.versions.filter((v) => v.stable).slice(0, 40) ?? [] as v (v.mc_version)}
+								<option value={v.mc_version}>{v.mc_version} (Java {v.java_version})</option>
+							{/each}
+						</select>
+					</label>
+					<div class="flex items-end">
+						<button
+							class="btn btn-secondary"
+							disabled={switchBusy || (vRunner === server.runner && vVersion === server.mc_version)}
+							onclick={switchVersion}
+						>
+							{switchBusy ? 'Switching…' : 'Switch version'}
+						</button>
+					</div>
+				</div>
+			</div>
+
 			<div class="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-6">
 				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-rose-400">Danger zone</h3>
 				<p class="mb-3 text-xs text-zinc-500">
@@ -1168,6 +1312,117 @@
 				</button>
 			</div>
 		</div>
-	{/if}
+	</div>
+	</div>
+
+		<!-- Live stats sidebar -->
+		<aside class="space-y-3">
+			<div class="card p-4">
+				<h3 class="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Live</h3>
+				<div class="space-y-4">
+					<div>
+						<div class="flex items-center justify-between text-xs text-zinc-500">
+							<span class="flex items-center gap-1.5">
+								<span class="h-1 w-2.5 rounded-full bg-emerald-400"></span> CPU
+							</span>
+							<span class="mono text-zinc-300">{stats ? stats.cpu_percent.toFixed(1) : '0.0'}%</span>
+						</div>
+						<div class="mt-1.5">
+							<TimeChart
+								points={activity.map((p) => ({ t: p.t, values: [p.values[0]] }))}
+								series={[{ color: '#34d399' }]}
+								height={34}
+							/>
+						</div>
+					</div>
+					<div>
+						<div class="flex items-center justify-between text-xs text-zinc-500">
+							<span class="flex items-center gap-1.5">
+								<span class="h-1 w-2.5 rounded-full bg-sky-400"></span> RAM
+							</span>
+							<span class="mono text-zinc-300">
+								{stats ? stats.memory_used_mb.toFixed(0) : '0'} / {stats ? stats.memory_limit_mb.toFixed(0) : '0'} MiB
+							</span>
+						</div>
+						<div class="mt-1.5">
+							<TimeChart
+								points={activity.map((p) => ({ t: p.t, values: [p.values[1]] }))}
+								series={[{ color: '#38bdf8' }]}
+								height={34}
+							/>
+						</div>
+					</div>
+					<div>
+						<div class="flex items-center justify-between text-xs text-zinc-500">
+							<span class="flex items-center gap-1.5">
+								<span class="h-1 w-2.5 rounded-full bg-violet-400"></span> Players
+							</span>
+							<span class="mono text-zinc-300">
+								{players ? players.online : 0}{players && players.max ? ` / ${players.max}` : ''}
+							</span>
+						</div>
+						<div class="mt-1.5">
+							<TimeChart
+								points={activity.map((p) => ({ t: p.t, values: [p.values[2]] }))}
+								series={[{ color: '#a78bfa' }]}
+								height={34}
+							/>
+						</div>
+					</div>
+				</div>
+				<p class="mt-3 border-t border-zinc-800/60 pt-2.5 text-[10px] text-zinc-600">last 5 minutes</p>
+			</div>
+
+			{#if server.map_url}
+				<div class="card p-4">
+					<h3 class="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Map</h3>
+					<a
+						href={server.map_url}
+						target="_blank"
+						rel="noreferrer"
+						class="text-xs text-sky-300 transition hover:text-sky-200"
+					>
+						<i class="ph ph-map-trifold"></i> Open the live map
+					</a>
+				</div>
+			{/if}
+
+			<div class="card p-4">
+				<h3 class="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Public access</h3>
+				{#if server.expose?.address}
+					<p class="font-mono text-xs break-all text-emerald-300">{server.expose.address}</p>
+					<p class="mt-1.5 text-[10px] text-zinc-600">Players join via this playit.gg address from anywhere.</p>
+				{:else if server.expose?.claim_url}
+					<a
+						href={server.expose.claim_url}
+						target="_blank"
+						rel="noreferrer"
+						class="text-xs break-all text-amber-300 transition hover:text-amber-200"
+					>
+						Claim the tunnel: {server.expose.claim_url}
+					</a>
+					<p class="mt-1.5 text-[10px] text-zinc-600">
+						Open the link, sign in to playit.gg, and the public address appears here.
+					</p>
+				{:else if server.expose?.installed}
+					<p class="text-xs text-zinc-400">
+						Plugin installed. Restart the server; the claim link then appears here.
+					</p>
+				{:else if hasMarket}
+					<button class="btn btn-secondary w-full px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={installExpose}>
+						<i class="ph ph-globe-hemisphere-west"></i> {exposeBusy ? 'Installing' : 'Expose via playit.gg'}
+					</button>
+					<p class="mt-1.5 text-[10px] text-zinc-600">
+						Free tunnel: players join without port forwarding.
+					</p>
+				{:else}
+					<p class="text-[10px] text-zinc-600">Available on Paper and Fabric servers.</p>
+				{/if}
+				{#if exposeNote}
+					<p class="mt-2 text-[10px] text-zinc-500">{exposeNote}</p>
+				{/if}
+			</div>
+		</aside>
+	</div>
 {/if}
 
