@@ -16,15 +16,14 @@
 	let memoryMb = $state(2048);
 
 	const statusStyle: Record<string, string> = {
-		running: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
-		starting: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
-		stopping: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
-		installing: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
-		offline: 'bg-slate-500/15 text-slate-400 ring-slate-500/30',
-		crashed: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
-		suspended: 'bg-rose-500/15 text-rose-300 ring-rose-500/30'
+		running: 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/25',
+		starting: 'bg-amber-400/10 text-amber-300 ring-amber-400/25',
+		stopping: 'bg-amber-400/10 text-amber-300 ring-amber-400/25',
+		installing: 'bg-sky-400/10 text-sky-300 ring-sky-400/25',
+		offline: 'bg-slate-400/10 text-slate-400 ring-slate-400/20',
+		crashed: 'bg-rose-400/10 text-rose-300 ring-rose-400/25',
+		suspended: 'bg-rose-400/10 text-rose-300 ring-rose-400/25'
 	};
-	const pulse = 'relative inline-flex h-2 w-2';
 
 	async function refresh() {
 		try {
@@ -60,6 +59,7 @@
 	onDestroy(() => clearInterval(refreshTimer));
 
 	const selectedRunner = $derived(runners.find((r) => r.id === runnerId));
+	const runningCount = $derived(servers.filter((s) => s.status === 'running').length);
 
 	async function create(e: SubmitEvent) {
 		e.preventDefault();
@@ -88,41 +88,29 @@
 	<title>Your servers — Quarry</title>
 </svelte:head>
 
-<div class="mb-6 flex items-center justify-between">
+<div class="mb-8 flex flex-wrap items-end justify-between gap-4">
 	<div>
-		<h1 class="text-2xl font-bold tracking-tight text-slate-50">Servers</h1>
-		<p class="mt-0.5 text-sm text-slate-500">
-			{servers.length} server{servers.length === 1 ? '' : 's'} ·
-			{servers.filter((s) => s.status === 'running').length} running
+		<h1 class="text-3xl font-bold tracking-tight text-white">Servers</h1>
+		<p class="mt-1.5 text-sm text-slate-500">
+			{servers.length} total · <span class="text-emerald-400">{runningCount} running</span>
 		</p>
 	</div>
-	<button
-		class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-950/40 transition hover:bg-emerald-500"
-		onclick={() => (showCreate = !showCreate)}
-	>
-		{showCreate ? 'Cancel' : '+ Create server'}
+	<button class="btn btn-primary" onclick={() => (showCreate = !showCreate)}>
+		{showCreate ? 'Cancel' : '+ New server'}
 	</button>
 </div>
 
 {#if showCreate}
-	<form
-		onsubmit={create}
-		class="mb-8 space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-5"
-	>
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+	<form onsubmit={create} class="card mb-8 space-y-5 p-6">
+		<div class="grid grid-cols-1 gap-5 md:grid-cols-4">
 			<label class="block">
-				<span class="mb-1.5 block text-sm font-medium text-slate-400">Name</span>
-				<input
-					class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
-					bind:value={name}
-					placeholder="my-server"
-					required
-				/>
+				<span class="label">Name</span>
+				<input class="input" bind:value={name} placeholder="my-server" required />
 			</label>
 			<label class="block">
-				<span class="mb-1.5 block text-sm font-medium text-slate-400">Server software</span>
+				<span class="label">Server software</span>
 				<select
-					class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+					class="select"
 					bind:value={runnerId}
 					onchange={() => {
 						const r = runners.find((x) => x.id === runnerId);
@@ -135,42 +123,29 @@
 				</select>
 			</label>
 			<label class="block">
-				<span class="mb-1.5 block text-sm font-medium text-slate-400">Minecraft version</span>
-				<select
-					class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
-					bind:value={mcVersion}
-				>
+				<span class="label">Minecraft version</span>
+				<select class="select" bind:value={mcVersion}>
 					{#each selectedRunner?.versions.filter((v) => v.stable).slice(0, 40) ?? [] as v (v.mc_version)}
 						<option value={v.mc_version}>{v.mc_version} — Java {v.java_version}</option>
 					{/each}
 				</select>
 			</label>
 			<label class="block">
-				<span class="mb-1.5 block text-sm font-medium text-slate-400">Memory (MiB)</span>
-				<input
-					type="number"
-					min="512"
-					step="512"
-					class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
-					bind:value={memoryMb}
-				/>
+				<span class="label">Memory (MiB)</span>
+				<input type="number" min="512" step="512" class="input" bind:value={memoryMb} />
 			</label>
 		</div>
 		{#if error}
-			<p class="rounded-lg border border-rose-900/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-300">
+			<p class="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
 				{error}
 			</p>
 		{/if}
 		<div class="flex items-center gap-4">
-			<button
-				type="submit"
-				disabled={creating || !mcVersion}
-				class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
-			>
+			<button type="submit" disabled={creating || !mcVersion} class="btn btn-primary">
 				{creating ? 'Creating…' : 'Create & install'}
 			</button>
 			<p class="text-xs text-slate-600">
-				Accepts the Minecraft EULA on your behalf. The jar downloads and installs in the background.
+				Accepts the Minecraft EULA on your behalf. The jar downloads in the background.
 			</p>
 		</div>
 	</form>
@@ -180,35 +155,40 @@
 	{#each servers as server (server.id)}
 		<a
 			href="/servers/{server.id}"
-			class="group rounded-xl border border-slate-800 bg-slate-900/70 p-5 transition hover:-translate-y-0.5 hover:border-emerald-700/60 hover:shadow-xl hover:shadow-emerald-950/20"
+			class="card card-hover group block p-5"
 		>
-			<div class="flex items-center gap-3">
-				<img src="/favicon.svg" alt="" class="h-8 w-8 rounded-lg" />
-				<div>
-					<p class="font-semibold text-slate-100 group-hover:text-white">{server.name}</p>
+			<div class="flex items-center gap-3.5">
+				<img
+					src="/favicon.svg"
+					alt=""
+					class="h-10 w-10 rounded-xl ring-1 ring-white/10 transition group-hover:ring-emerald-400/40"
+				/>
+				<div class="min-w-0">
+					<p class="truncate font-semibold text-slate-100">{server.name}</p>
 					<p class="text-xs text-slate-500">{server.runner} · {server.mc_version}</p>
 				</div>
-				<span
-					class={`ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ring-1 ${statusStyle[server.status] ?? statusStyle.offline}`}
-				>
-					<span class={pulse}>
-						<span class={`absolute inline-flex h-full w-full rounded-full ${server.status === 'running' ? 'animate-ping bg-emerald-400/60' : ''}`}></span>
-						<span class={`relative inline-flex h-2 w-2 rounded-full ${server.status === 'running' ? 'bg-emerald-400' : 'bg-current'}`}></span>
-					</span>
+				<span class={`badge ml-auto ring-1 ${statusStyle[server.status] ?? statusStyle.offline}`}>
+					{#if server.status === 'running'}
+						<span class="status-dot"><span class="absolute inset-0 rounded-full bg-emerald-400/50" style="animation: status-ping 1.8s cubic-bezier(0,0,0.2,1) infinite;"></span><span class="relative h-2 w-2 rounded-full bg-emerald-400"></span></span>
+					{:else}
+						<span class="h-2 w-2 rounded-full bg-current opacity-70"></span>
+					{/if}
 					{server.status}
 				</span>
 			</div>
-			<div class="mt-4 flex items-center gap-2 text-xs text-slate-500">
-				<span class="rounded bg-slate-800/80 px-2 py-1 font-mono">{server.ip}:{server.port}</span>
-				<span class="rounded bg-slate-800/80 px-2 py-1">{server.memory_mb} MiB</span>
-				<span class="ml-auto text-slate-600 transition group-hover:text-emerald-400">Open →</span>
+			<div class="mt-5 flex items-center gap-2 text-xs">
+				<span class="chip">{server.ip}:{server.port}</span>
+				<span class="chip">{server.memory_mb} MiB</span>
+				<span class="ml-auto text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-emerald-400">
+					Open →
+				</span>
 			</div>
 		</a>
 	{:else}
-		<div class="rounded-xl border border-dashed border-slate-800 p-12 text-center">
+		<div class="rounded-2xl border border-dashed border-slate-700/50 p-16 text-center">
 			<p class="text-slate-400">No servers yet.</p>
-			<p class="mt-1 text-sm text-slate-600">
-				Create one above — pick a runner, a Minecraft version, and you're mining.
+			<p class="mt-1.5 text-sm text-slate-600">
+				Create one above — pick a runner, a version, and you're mining.
 			</p>
 		</div>
 	{/each}

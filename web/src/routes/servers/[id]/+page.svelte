@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, type Server } from '$lib/api';
@@ -231,12 +231,15 @@
 	onMount(async () => {
 		server = await api.get<Server>(`/api/v1/servers/${id}`);
 		loadFiles('');
+		// Flush the DOM so the console element exists, then create the
+		// terminal *before* opening the socket — deterministic ordering.
+		await tick();
+		if (consoleEl && !term) await initTerminal(consoleEl);
 		connectConsole();
 	});
 
-	// The console div is inside {#if server}, so it only exists after the
-	// server loads — and again on every Console-tab switch. This effect
-	// (re)binds the terminal whenever a fresh element appears.
+	// The console div is inside {#if server}, so it is recreated on every
+	// Console-tab switch; this rebinds a fresh terminal when that happens.
 	let termBoundTo: HTMLDivElement | null = null;
 	$effect(() => {
 		const el = consoleEl;
@@ -247,8 +250,11 @@
 	});
 
 	async function initTerminal(el: HTMLDivElement) {
-		const { Terminal } = await import('@xterm/xterm');
-		const { FitAddon } = await import('@xterm/addon-fit');
+		const [{ Terminal }, { FitAddon }] = await Promise.all([
+			import('@xterm/xterm'),
+			import('@xterm/addon-fit')
+		]);
+		if (term && termBoundTo === el) return; // already bound to this element
 		term?.dispose();
 		term = new Terminal({
 			convertEol: true,
@@ -278,8 +284,8 @@
 			);
 			for (const line of t.scrollback ?? []) term.writeln(line);
 			term.writeln('— connected —');
-		} catch {
-			term.writeln('— connected (history unavailable) —');
+		} catch (e) {
+			term.writeln('— connected (history unavailable: ' + String(e).slice(0, 60) + ') —');
 		}
 	}
 
@@ -371,64 +377,60 @@
 </svelte:head>
 
 {#if server}
-	<div class="mb-5 flex flex-wrap items-center gap-3">
-		<a href="/" class="text-sm text-slate-500 transition hover:text-slate-300">← Servers</a>
-		<h1 class="text-2xl font-bold tracking-tight text-slate-50">{server.name}</h1>
-		<span
-			class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ring-1 ${statusStyle[server.status] ?? statusStyle.offline}`}
-		>
+	<div class="mb-6 flex flex-wrap items-center gap-3.5">
+		<a href="/" class="text-sm text-slate-600 transition hover:text-slate-300">← Servers</a>
+		<h1 class="text-3xl font-bold tracking-tight text-white">{server.name}</h1>
+		<span class={`badge ring-1 ${statusStyle[server.status] ?? statusStyle.offline}`}>
 			{server.status}
 		</span>
 		{#if statusDetail}<span class="text-xs text-slate-500">{statusDetail}</span>{/if}
-		<span class="ml-auto rounded bg-slate-900 px-2.5 py-1 font-mono text-xs text-slate-400 ring-1 ring-slate-800">
-			{server.ip}:{server.port}
-		</span>
+		<span class="chip ml-auto">{server.ip}:{server.port}</span>
 	</div>
 
 	<!-- Power + stats row -->
-	<div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-		<div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+	<div class="mb-7 grid grid-cols-1 gap-4 md:grid-cols-3">
+		<div class="card flex flex-wrap items-center gap-2 p-4">
 			<button
-				class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-950/40 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-30"
+				class="btn btn-primary"
 				disabled={!['offline', 'crashed'].includes(server.status)}
 				onclick={() => power('start')}>▶ Start</button
 			>
 			<button
-				class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-30"
+				class="btn btn-secondary !text-amber-300"
 				disabled={!['running', 'starting', 'stopping'].includes(server.status)}
 				onclick={() => power('stop')}>■ Stop</button
 			>
 			<button
-				class="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-30"
+				class="btn btn-secondary"
 				disabled={!['running', 'crashed'].includes(server.status)}
 				onclick={() => power('restart')}>⟳ Restart</button
 			>
 			<button
-				class="rounded-lg bg-rose-700/80 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-30"
+				class="btn btn-danger"
 				disabled={!['running', 'starting', 'stopping', 'crashed'].includes(server.status)}
 				onclick={() => power('kill')}>✕ Kill</button
 			>
 		</div>
-		<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500">
-				<span>CPU</span><span>{stats ? stats.cpu_percent.toFixed(1) : '–'}%</span>
+		<div class="card p-4">
+			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-slate-500">
+				<span>CPU</span><span class="text-slate-300">{stats ? stats.cpu_percent.toFixed(1) : '–'}%</span>
 			</div>
-			<div class="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-800">
+			<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
 				<div
 					class="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
 					style="width: {cpuPct}%"
 				></div>
 			</div>
 		</div>
-		<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500">
+		<div class="card p-4">
+			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-slate-500">
 				<span>Memory</span>
-				<span>
+				<span class="text-slate-300">
 					{stats ? stats.memory_used_mb.toFixed(0) : '–'} /
 					{stats ? stats.memory_limit_mb.toFixed(0) : '–'} MiB
 				</span>
 			</div>
-			<div class="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-800">
+			<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
 				<div
 					class="h-full rounded-full bg-gradient-to-r from-sky-600 to-sky-400 transition-all duration-500"
 					style="width: {memPct}%"
@@ -438,38 +440,28 @@
 	</div>
 
 	{#if error}
-		<p class="mb-4 rounded-lg border border-rose-900/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-300">
+		<p class="mb-4 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
 			{error}
 		</p>
 	{/if}
 
-	<div class="mb-4 flex items-center gap-2 text-sm">
-		<button
-			class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'console' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
-			onclick={() => (tab = 'console')}
-		>
-			Console
-		</button>
-		<button
-			class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'files' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
-			onclick={() => (tab = 'files')}
-		>
-			Files
-		</button>
-		{#if hasMarket}
-			<button
-				class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'plugins' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
-				onclick={openPlugins}
-			>
-				Plugins
+	<div class="mb-5 flex items-center gap-3">
+		<div class="tabs">
+			<button class={`tab ${tab === 'console' ? 'tab-active' : ''}`} onclick={() => (tab = 'console')}>
+				Console
 			</button>
-		{/if}
-		<button
-			class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'settings' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
-			onclick={openSettings}
-		>
-			Settings
-		</button>
+			<button class={`tab ${tab === 'files' ? 'tab-active' : ''}`} onclick={() => (tab = 'files')}>
+				Files
+			</button>
+			{#if hasMarket}
+				<button class={`tab ${tab === 'plugins' ? 'tab-active' : ''}`} onclick={openPlugins}>
+					Plugins
+				</button>
+			{/if}
+			<button class={`tab ${tab === 'settings' ? 'tab-active' : ''}`} onclick={openSettings}>
+				Settings
+			</button>
+		</div>
 		{#if tab === 'console'}
 			<span class="ml-auto flex items-center gap-2 text-xs text-slate-500">
 				<span
@@ -485,24 +477,22 @@
 	</div>
 
 	{#if tab === 'console'}
-		<div class="overflow-hidden rounded-xl border border-slate-800">
-			<div
-				class="flex items-center justify-between border-b border-slate-800 bg-slate-900/80 px-3 py-1.5"
-			>
+		<div class="card overflow-hidden">
+			<div class="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-2">
 				<span class="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
 					{server.name} — console
 				</span>
 				<button
-					class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"
+					class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
 					onclick={() => clearConsole()}
 				>
 					clear
 				</button>
 			</div>
-			<div bind:this={consoleEl} class="h-[26rem] w-full bg-slate-950 p-2"></div>
+			<div bind:this={consoleEl} class="h-[26rem] w-full bg-[#0b1120] p-2"></div>
 			<form
 				onsubmit={sendLine}
-				class="flex items-center gap-2 border-t border-slate-800 bg-slate-900/80 px-3 py-2.5"
+				class="flex items-center gap-2 border-t border-white/5 bg-white/[0.02] px-4 py-2.5"
 			>
 				<span class="font-mono text-sm {wsState === 'live' ? 'text-emerald-400' : 'text-slate-600'}">$</span>
 				<input
@@ -523,7 +513,7 @@
 		</div>
 	{:else if tab === 'files'}
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+			<div class="card p-5">
 				<div class="mb-2 flex items-center gap-2 text-sm">
 					<button class="text-slate-400 transition hover:text-slate-200" onclick={() => loadFiles('')}>
 						root
@@ -561,14 +551,11 @@
 					{/each}
 				</ul>
 			</div>
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+			<div class="card p-5">
 				{#if fileEditing}
 					<div class="mb-2 flex items-center gap-2 text-sm">
 						<span class="font-mono text-slate-300">{fileEditing}</span>
-						<button
-							class="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
-							onclick={saveFile}>Save</button
-						>
+						<button class="btn btn-primary ml-auto px-3 py-1.5 text-xs" onclick={saveFile}>Save</button>
 						<button
 							class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500"
 							onclick={() => (fileEditing = '')}>Close</button
@@ -608,7 +595,7 @@
 			{/if}
 
 			{#if pluginSearchDone}
-				<div class="rounded-xl border border-slate-800 bg-slate-900/70">
+				<div class="card">
 					{#each pluginResults as hit (hit.project_id)}
 						<div class="flex items-center gap-3 border-b border-slate-800/60 p-4 last:border-0">
 							<div class="min-w-0 flex-1">
@@ -618,7 +605,7 @@
 								</p>
 							</div>
 							<button
-								class="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+								class="btn btn-primary shrink-0 px-3 py-1.5 text-xs"
 								disabled={installingId === hit.project_id}
 								onclick={() => installPlugin(hit.project_id)}
 							>
@@ -635,7 +622,7 @@
 				<h3 class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">
 					Installed ({plugins.length})
 				</h3>
-				<div class="rounded-xl border border-slate-800 bg-slate-900/70 font-mono text-sm">
+				<div class="card font-mono text-sm">
 					{#each plugins as p (p.name)}
 						<div class="group flex items-center gap-3 border-b border-slate-800/60 px-4 py-2.5 last:border-0">
 							<span class="text-slate-200">{p.name}</span>
@@ -662,7 +649,7 @@
 				</p>
 			{/if}
 
-			<form onsubmit={saveSettings} class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+			<form onsubmit={saveSettings} class="card p-6">
 				<h3 class="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">General</h3>
 				<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 					<label class="block">
@@ -679,7 +666,7 @@
 							type="number"
 							min="512"
 							step="512"
-							class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+							class="input"
 							bind:value={settings.memory_mb}
 						/>
 					</label>
@@ -690,24 +677,20 @@
 							min="50"
 							max="3200"
 							step="50"
-							class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+							class="input"
 							bind:value={settings.cpu_percent}
 						/>
 					</label>
 				</div>
 				<div class="mt-4 flex items-center gap-4">
-					<button
-						type="submit"
-						disabled={settingsBusy}
-						class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
-					>
+					<button type="submit" disabled={settingsBusy} class="btn btn-primary">
 						{settingsBusy ? 'Saving…' : 'Save changes'}
 					</button>
 					<p class="text-xs text-slate-600">Memory and CPU changes apply on the next start.</p>
 				</div>
 			</form>
 
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+			<div class="card p-6">
 				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-slate-500">Network</h3>
 				<p class="mb-3 text-xs text-slate-600">
 					Current address: <span class="font-mono text-slate-400">{server.ip}:{server.port}</span>.
@@ -738,13 +721,13 @@
 				</ul>
 			</div>
 
-			<div class="rounded-xl border border-rose-900/50 bg-rose-950/20 p-5">
+			<div class="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-6">
 				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-rose-400">Danger zone</h3>
 				<p class="mb-3 text-xs text-slate-500">
 					Deleting removes the server and wipes its worlds and files from the node.
 				</p>
 				<button
-					class="rounded-lg bg-rose-700/80 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-40"
+					class="btn btn-danger"
 					disabled={['running', 'starting', 'stopping'].includes(server.status)}
 					onclick={deleteServer}
 				>

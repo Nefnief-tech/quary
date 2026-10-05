@@ -18,68 +18,50 @@
 			.join('')
 			.toUpperCase()
 	);
+
+	function linkClass(active: boolean) {
+		return `rounded-lg px-3 py-1.5 text-sm transition ${
+			active
+				? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+				: 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+		}`;
+	}
 </script>
 
-<div class="flex h-full flex-col bg-slate-950">
-	<header class="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
-		<div class="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
+<div class="flex min-h-full flex-col">
+	<header class="sticky top-0 z-20 border-b border-white/5 bg-[#05070d]/70 backdrop-blur-xl">
+		<div class="mx-auto flex h-16 max-w-6xl items-center gap-8 px-5">
 			<a href="/" class="group flex items-center gap-2.5">
-				<img src="/favicon.svg" alt="" class="h-7 w-7" />
-				<span class="text-[15px] font-semibold tracking-tight text-slate-100 group-hover:text-white">
-					Quarry
-				</span>
+				<img src="/favicon.svg" alt="" class="h-8 w-8 transition group-hover:scale-105" />
+				<span class="text-[15px] font-bold tracking-tight text-white">Quarry</span>
 			</a>
-			<nav class="flex items-center gap-1 text-sm">
-				<a
-					href="/"
-					class="rounded-md px-3 py-1.5 transition {page.url.pathname === '/'
-						? 'bg-slate-800/80 text-slate-100'
-						: 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}"
-				>
-					Servers
-				</a>
+			<nav class="flex items-center gap-1.5">
+				<a href="/" class={linkClass(page.url.pathname === '/')}>Servers</a>
 				{#if isAdmin}
-					<a
-						href="/admin"
-						class="rounded-md px-3 py-1.5 transition {page.url.pathname === '/admin'
-							? 'bg-slate-800/80 text-slate-100'
-							: 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}"
-					>
-						Admin
-					</a>
+					<a href="/admin" class={linkClass(page.url.pathname === '/admin')}>Admin</a>
 				{/if}
 			</nav>
 			<div class="ml-auto flex items-center gap-3">
 				{#if auth.user}
 					<span
-						class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600/20 text-xs font-bold text-emerald-300 ring-1 ring-emerald-600/40"
+						class="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-b from-emerald-400/30 to-emerald-600/30 text-xs font-bold text-emerald-300 ring-1 ring-emerald-400/30"
 						title={auth.user.username}
 					>
 						{initials}
 					</span>
-					<button
-						class="rounded-md border border-slate-700/80 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100"
-						onclick={() => auth.logout()}
-					>
-						Sign out
-					</button>
+					<button class="btn btn-ghost" onclick={() => auth.logout()}>Sign out</button>
 				{:else}
-					<a
-						href="/login"
-						class="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
-					>
-						Log in
-					</a>
+					<a href="/login" class="btn btn-primary">Log in</a>
 				{/if}
 			</div>
 		</div>
 	</header>
-	<main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+	<main class="mx-auto w-full max-w-6xl flex-1 px-5 py-9">
 		{@render children?.()}
 	</main>
-	<footer class="border-t border-slate-800/60 py-4">
+	<footer class="border-t border-white/5 py-5">
 		<p class="text-center text-xs text-slate-600">
-			Quarry — open-source Minecraft server management
+			Quarry · open-source Minecraft server management
 		</p>
 	</footer>
 </div>

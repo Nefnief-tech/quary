@@ -98,18 +98,15 @@
 	<h2 class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Nodes</h2>
 	<div class="mb-4 flex gap-2">
 		<input
-			class="w-56 rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
+			class="input w-56"
 			placeholder="new node name"
 			bind:value={newNodeName}
 		/>
-		<button
-			class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-			onclick={() => createNode()}>Create node</button
-		>
+		<button class="btn btn-primary" onclick={() => createNode()}>Create node</button>
 	</div>
 	<div class="space-y-3">
 		{#each nodes as node (node.id)}
-			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+			<div class="card p-5">
 				<div class="flex flex-wrap items-center gap-3">
 					<span
 						class={`h-2.5 w-2.5 rounded-full ${node.status === 'online' ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'}`}
@@ -125,13 +122,12 @@
 						{#if node.daemon_version}· daemon {node.daemon_version}{/if}
 						{#if node.os}· {node.os}/{node.arch}{/if}
 					</span>
-					<button
-						class="ml-auto rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500 hover:text-slate-100"
-						onclick={() => rotateToken(node)}>Rotate enrollment token</button
-					>
+					<button class="btn btn-secondary ml-auto px-3 py-1.5 text-xs" onclick={() => rotateToken(node)}>
+						Rotate token
+					</button>
 				</div>
 				{#if mintedToken && mintedNodeId === node.id}
-					<div class="mt-3 rounded-lg border border-emerald-900/50 bg-emerald-950/30 p-3">
+					<div class="mt-3 rounded-lg border border-emerald-400/20 bg-emerald-400/5 p-3">
 						<p class="font-mono text-xs break-all text-emerald-300">{mintedToken}</p>
 						<p class="mt-1.5 text-xs text-slate-500">
 							Shown once. Set it as <code class="text-slate-400">QUARRY_ENROLLMENT_TOKEN</code> on
@@ -145,26 +141,21 @@
 				>
 					<span class="text-slate-500">Allocations:</span>
 					<input
-						class="w-32 rounded-lg border border-slate-700/80 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-emerald-500"
+						class="input w-32 px-2.5 py-1.5 font-mono text-xs"
 						bind:value={allocIp}
 					/>
 					<input
 						type="number"
-						class="w-20 rounded-lg border border-slate-700/80 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-emerald-500"
+						class="input w-20 px-2.5 py-1.5 font-mono text-xs"
 						bind:value={allocFrom}
 					/>
 					<span class="text-slate-600">–</span>
 					<input
 						type="number"
-						class="w-20 rounded-lg border border-slate-700/80 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-emerald-500"
+						class="input w-20 px-2.5 py-1.5 font-mono text-xs"
 						bind:value={allocTo}
 					/>
-					<button
-						type="submit"
-						class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
-					>
-						Add range
-					</button>
+					<button type="submit" class="btn btn-secondary px-3 py-1.5 text-xs">Add range</button>
 				</form>
 			</div>
 		{:else}
@@ -177,7 +168,7 @@
 
 <section>
 	<h2 class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Users</h2>
-	<div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70">
+	<div class="card overflow-hidden">
 		<table class="w-full text-sm">
 			<tbody>
 				{#each users as user (user.id)}
@@ -199,10 +190,7 @@
 						</td>
 						<td class="px-5 py-3 text-right">
 							{#if user.id !== auth.user?.id}
-								<button
-									class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500 hover:text-slate-100"
-									onclick={() => setUserDisabled(user, !user.disabled)}
-								>
+								<button class="btn btn-secondary px-3 py-1.5 text-xs" onclick={() => setUserDisabled(user, !user.disabled)}>
 									{user.disabled ? 'Enable' : 'Disable'}
 								</button>
 							{/if}
@@ -213,30 +201,18 @@
 		</table>
 	</div>
 	<form class="mt-4 flex flex-wrap gap-2" onsubmit={createUser}>
-		<input
-			class="rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
-			placeholder="username"
+		<input class="input" placeholder="username"
 			bind:value={newUser.username}
 			required
 		/>
-		<input
-			class="rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
-			placeholder="password"
+		<input class="input" placeholder="password"
 			bind:value={newUser.password}
 			required
 		/>
-		<select
-			class="rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
-			bind:value={newUser.role}
-		>
+		<select class="select w-auto" bind:value={newUser.role}>
 			<option value="user">user</option>
 			<option value="admin">admin</option>
 		</select>
-		<button
-			type="submit"
-			class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
-		>
-			Create user
-		</button>
+		<button type="submit" class="btn btn-primary">Create user</button>
 	</form>
 </section>
