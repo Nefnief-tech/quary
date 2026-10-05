@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,9 +19,8 @@ const eventQueueDepth = 8192
 // emitter serializes events onto the Channel stream through a single sender
 // goroutine.
 type emitter struct {
-	ch   chan *nodesv1.ChannelRequest
-	log  *slog.Logger
-	once sync.Once
+	ch  chan *nodesv1.ChannelRequest
+	log *slog.Logger
 }
 
 func newEmitter(log *slog.Logger) *emitter {

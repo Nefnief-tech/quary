@@ -32,7 +32,8 @@ type Docker struct {
 // NewDocker builds the runtime; containerUID must match the daemon's
 // effective UID.
 func NewDocker(containerUID int) (*Docker, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	// API-version negotiation is on by default in the current client.
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("docker client: %w", err)
 	}
@@ -61,7 +62,7 @@ func (d *Docker) EnsureImage(ctx context.Context, ref string) error {
 	if err != nil {
 		return fmt.Errorf("pull image %s: %w", ref, err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	_, _ = io.Copy(io.Discard, rc) // consume the progress stream
 	return nil
 }
@@ -264,7 +265,7 @@ func (d *Docker) StatsOneShot(ctx context.Context, id uuid.UUID) (*Stats, error)
 	if err != nil {
 		return nil, err
 	}
-	defer raw.Body.Close()
+	defer func() { _ = raw.Body.Close() }()
 	var s dockerStatsJSON
 	if err := json.NewDecoder(raw.Body).Decode(&s); err != nil {
 		return nil, err

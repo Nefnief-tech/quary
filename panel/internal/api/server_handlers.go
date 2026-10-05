@@ -252,7 +252,7 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	events, cancel := s.hub.Subscribe(serverID)
 	defer cancel()
@@ -261,7 +261,7 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 	sendJSON := func(v any) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		return conn.WriteJSON(v)
 	}
 
@@ -320,7 +320,7 @@ func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		case <-ticker.C:
 			writeMu.Lock()
-			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			err := conn.WriteMessage(websocket.PingMessage, nil)
 			writeMu.Unlock()
 			if err != nil {
@@ -375,8 +375,6 @@ func (s *Server) listServerFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	writeRawJSON(w, result.GetBody())
 }
-
-type readFileRequest struct{}
 
 func (s *Server) readServerFile(w http.ResponseWriter, r *http.Request) {
 	sv, ok := s.loadServer(w, r)

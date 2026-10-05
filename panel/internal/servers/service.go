@@ -170,10 +170,11 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 			}},
 		})
 		if err != nil || !result.GetOk() {
-			detail := "install failed"
-			if err != nil {
+			var detail string
+			switch {
+			case err != nil:
 				detail = err.Error()
-			} else {
+			default:
 				detail = result.GetError()
 			}
 			s.log.Error("server install failed", "server_id", serverID, "err", detail)

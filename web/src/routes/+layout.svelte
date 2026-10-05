@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
 	import { auth } from '$lib/auth.svelte';
 
 	let { children } = $props();
@@ -9,37 +10,76 @@
 	});
 
 	const isAdmin = $derived(auth.user?.role_name === 'admin');
+	const initials = $derived(
+		(auth.user?.username ?? '?')
+			.split(/[-_.]/)
+			.map((p) => p[0])
+			.slice(0, 2)
+			.join('')
+			.toUpperCase()
+	);
 </script>
 
-<div class="flex h-full flex-col">
-	<header class="border-b border-slate-800 bg-slate-900/60">
-		<div class="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-			<a href="/" class="flex items-center gap-2 font-semibold text-slate-100">
-				<span class="inline-block h-5 w-5 rounded bg-emerald-500"></span>
-				Quarry
+<div class="flex h-full flex-col bg-slate-950">
+	<header class="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
+		<div class="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
+			<a href="/" class="group flex items-center gap-2.5">
+				<img src="/favicon.svg" alt="" class="h-7 w-7" />
+				<span class="text-[15px] font-semibold tracking-tight text-slate-100 group-hover:text-white">
+					Quarry
+				</span>
 			</a>
-			<nav class="flex items-center gap-4 text-sm text-slate-400">
-				<a href="/" class="hover:text-slate-100">Servers</a>
+			<nav class="flex items-center gap-1 text-sm">
+				<a
+					href="/"
+					class="rounded-md px-3 py-1.5 transition {page.url.pathname === '/'
+						? 'bg-slate-800/80 text-slate-100'
+						: 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}"
+				>
+					Servers
+				</a>
 				{#if isAdmin}
-					<a href="/admin" class="hover:text-slate-100">Admin</a>
+					<a
+						href="/admin"
+						class="rounded-md px-3 py-1.5 transition {page.url.pathname === '/admin'
+							? 'bg-slate-800/80 text-slate-100'
+							: 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}"
+					>
+						Admin
+					</a>
 				{/if}
 			</nav>
-			<div class="ml-auto flex items-center gap-3 text-sm">
+			<div class="ml-auto flex items-center gap-3">
 				{#if auth.user}
-					<span class="text-slate-400">{auth.user.username}</span>
+					<span
+						class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600/20 text-xs font-bold text-emerald-300 ring-1 ring-emerald-600/40"
+						title={auth.user.username}
+					>
+						{initials}
+					</span>
 					<button
-						class="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:border-slate-500 hover:text-slate-100"
+						class="rounded-md border border-slate-700/80 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-slate-100"
 						onclick={() => auth.logout()}
 					>
-						Log out
+						Sign out
 					</button>
 				{:else}
-					<a href="/login" class="text-slate-300 hover:text-slate-100">Log in</a>
+					<a
+						href="/login"
+						class="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
+					>
+						Log in
+					</a>
 				{/if}
 			</div>
 		</div>
 	</header>
-	<main class="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-		{children}
+	<main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+		{@render children?.()}
 	</main>
+	<footer class="border-t border-slate-800/60 py-4">
+		<p class="text-center text-xs text-slate-600">
+			Quarry — open-source Minecraft server management
+		</p>
+	</footer>
 </div>

@@ -7,15 +7,14 @@
 	let error = $state('');
 	let tab = $state<'console' | 'files'>('console');
 
-	// console state
 	let consoleEl: HTMLDivElement | null = $state(null);
 	let inputLine = $state('');
 	let statusDetail = $state('');
 	let stats = $state<{ cpu_percent: number; memory_used_mb: number; memory_limit_mb: number } | null>(
 		null
 	);
+	let wsState = $state<'connecting' | 'live' | 'down'>('connecting');
 
-	// files state
 	let files = $state<{ name: string; size: number; is_dir: boolean; modified: string }[]>([]);
 	let filePath = $state('');
 	let fileContent = $state('');
@@ -24,16 +23,25 @@
 	const id = $derived(page.params.id ?? '');
 	let ws: WebSocket | null = null;
 	let term: import('@xterm/xterm').Terminal | null = null;
+	let fit: import('@xterm/addon-fit').FitAddon | null = null;
+	let resizeObs: ResizeObserver | null = null;
 
-	const statusColor: Record<string, string> = {
-		running: 'bg-emerald-500',
-		starting: 'bg-amber-400',
-		stopping: 'bg-amber-400',
-		installing: 'bg-sky-400',
-		offline: 'bg-slate-500',
-		crashed: 'bg-rose-500',
-		suspended: 'bg-rose-400'
+	const statusStyle: Record<string, string> = {
+		running: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
+		starting: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
+		stopping: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
+		installing: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
+		offline: 'bg-slate-500/15 text-slate-400 ring-slate-500/30',
+		crashed: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
+		suspended: 'bg-rose-500/15 text-rose-300 ring-rose-500/30'
 	};
+
+	const memPct = $derived(
+		stats && stats.memory_limit_mb > 0
+			? Math.min(100, (stats.memory_used_mb / stats.memory_limit_mb) * 100)
+			: 0
+	);
+	const cpuPct = $derived(stats ? Math.min(100, stats.cpu_percent) : 0);
 
 	async function loadFiles(path = '') {
 		try {
@@ -86,7 +94,6 @@
 		server = await api.get<Server>(`/api/v1/servers/${id}`);
 		loadFiles('');
 
-		// Console over WebSocket with a short-lived signed token.
 		const t = await api.get<{ token: string; scrollback: string[] }>(
 			`/api/v1/servers/${id}/console/token`
 		);
@@ -95,18 +102,32 @@
 			const { FitAddon } = await import('@xterm/addon-fit');
 			term = new Terminal({
 				convertEol: true,
-				fontFamily: 'ui-monospace, monospace',
-				theme: { background: '#020617' }
+				fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+				fontSize: 12.5,
+				theme: {
+					background: '#0b1120',
+					foreground: '#cbd5e1',
+					cursor: '#34d399',
+					green: '#34d399',
+					yellow: '#fbbf24',
+					red: '#fb7185'
+				}
 			});
-			const fit = new FitAddon();
+			fit = new FitAddon();
 			term.loadAddon(fit);
 			term.open(consoleEl);
 			fit.fit();
+			resizeObs = new ResizeObserver(() => fit?.fit());
+			resizeObs.observe(consoleEl);
 			for (const line of t.scrollback ?? []) term.writeln(line);
 		}
 
 		const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+		wsState = 'connecting';
 		ws = new WebSocket(`${proto}://${location.host}/api/v1/servers/${id}/console?token=${t.token}`);
+		ws.onopen = () => (wsState = 'live');
+		ws.onclose = () => (wsState = 'down');
+		ws.onerror = () => (wsState = 'down');
 		ws.onmessage = (ev) => {
 			const frame = JSON.parse(ev.data);
 			if (frame.type === 'console') {
@@ -123,13 +144,14 @@
 	});
 
 	onDestroy(() => {
+		resizeObs?.disconnect();
 		ws?.close();
 		term?.dispose();
 	});
 
 	async function sendLine(e: SubmitEvent) {
 		e.preventDefault();
-		if (!inputLine || !ws) return;
+		if (!inputLine || !ws || ws.readyState !== WebSocket.OPEN) return;
 		ws.send(inputLine);
 		inputLine = '';
 	}
@@ -140,105 +162,154 @@
 </svelte:head>
 
 {#if server}
-	<div class="mb-4 flex flex-wrap items-center gap-3">
-		<a href="/" class="text-sm text-slate-400 hover:text-slate-200">← Servers</a>
-		<h1 class="text-xl font-semibold text-slate-100">{server.name}</h1>
-		<span class={`inline-block h-2.5 w-2.5 rounded-full ${statusColor[server.status] ?? 'bg-slate-500'}`}></span>
-		<span class="text-xs uppercase tracking-wide text-slate-500">{server.status}</span>
+	<div class="mb-5 flex flex-wrap items-center gap-3">
+		<a href="/" class="text-sm text-slate-500 transition hover:text-slate-300">← Servers</a>
+		<h1 class="text-2xl font-bold tracking-tight text-slate-50">{server.name}</h1>
+		<span
+			class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ring-1 ${statusStyle[server.status] ?? statusStyle.offline}`}
+		>
+			{server.status}
+		</span>
 		{#if statusDetail}<span class="text-xs text-slate-500">{statusDetail}</span>{/if}
-		<span class="ml-auto text-sm text-slate-400">{server.ip}:{server.port}</span>
+		<span class="ml-auto rounded bg-slate-900 px-2.5 py-1 font-mono text-xs text-slate-400 ring-1 ring-slate-800">
+			{server.ip}:{server.port}
+		</span>
 	</div>
 
-	<div class="mb-4 flex flex-wrap items-center gap-2">
-		<button
-			class="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-40"
-			disabled={!['offline', 'crashed'].includes(server.status)}
-			onclick={() => power('start')}>Start</button
-		>
-		<button
-			class="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-40"
-			disabled={!['running', 'starting', 'stopping'].includes(server.status)}
-			onclick={() => power('stop')}>Stop</button
-		>
-		<button
-			class="rounded bg-slate-700 px-3 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-40"
-			disabled={!['running', 'crashed'].includes(server.status)}
-			onclick={() => power('restart')}>Restart</button
-		>
-		<button
-			class="rounded bg-rose-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-40"
-			disabled={!['running', 'starting', 'stopping', 'crashed'].includes(server.status)}
-			onclick={() => power('kill')}>Kill</button
-		>
-		{#if stats}
-			<span class="ml-auto text-xs text-slate-500">
-				CPU {stats.cpu_percent.toFixed(1)}% · MEM {stats.memory_used_mb.toFixed(0)}/
-				{stats.memory_limit_mb.toFixed(0)} MiB
-			</span>
-		{/if}
+	<!-- Power + stats row -->
+	<div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+		<div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+			<button
+				class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-950/40 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-30"
+				disabled={!['offline', 'crashed'].includes(server.status)}
+				onclick={() => power('start')}>▶ Start</button
+			>
+			<button
+				class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-30"
+				disabled={!['running', 'starting', 'stopping'].includes(server.status)}
+				onclick={() => power('stop')}>■ Stop</button
+			>
+			<button
+				class="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-30"
+				disabled={!['running', 'crashed'].includes(server.status)}
+				onclick={() => power('restart')}>⟳ Restart</button
+			>
+			<button
+				class="rounded-lg bg-rose-700/80 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-30"
+				disabled={!['running', 'starting', 'stopping', 'crashed'].includes(server.status)}
+				onclick={() => power('kill')}>✕ Kill</button
+			>
+		</div>
+		<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500">
+				<span>CPU</span><span>{stats ? stats.cpu_percent.toFixed(1) : '–'}%</span>
+			</div>
+			<div class="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-800">
+				<div
+					class="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
+					style="width: {cpuPct}%"
+				></div>
+			</div>
+		</div>
+		<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-slate-500">
+				<span>Memory</span>
+				<span>
+					{stats ? stats.memory_used_mb.toFixed(0) : '–'} /
+					{stats ? stats.memory_limit_mb.toFixed(0) : '–'} MiB
+				</span>
+			</div>
+			<div class="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-800">
+				<div
+					class="h-full rounded-full bg-gradient-to-r from-sky-600 to-sky-400 transition-all duration-500"
+					style="width: {memPct}%"
+				></div>
+			</div>
+		</div>
 	</div>
 
-	{#if error}<p class="mb-3 text-sm text-rose-400">{error}</p>{/if}
+	{#if error}
+		<p class="mb-4 rounded-lg border border-rose-900/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-300">
+			{error}
+		</p>
+	{/if}
 
-	<div class="mb-3 flex gap-2 text-sm">
+	<div class="mb-4 flex items-center gap-2 text-sm">
 		<button
-			class={`rounded px-3 py-1.5 ${tab === 'console' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
+			class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'console' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
 			onclick={() => (tab = 'console')}
 		>
 			Console
 		</button>
 		<button
-			class={`rounded px-3 py-1.5 ${tab === 'files' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
+			class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'files' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
 			onclick={() => (tab = 'files')}
 		>
 			Files
 		</button>
+		{#if tab === 'console'}
+			<span class="ml-auto flex items-center gap-2 text-xs text-slate-500">
+				<span
+					class={`h-2 w-2 rounded-full ${wsState === 'live' ? 'animate-pulse bg-emerald-400' : wsState === 'connecting' ? 'bg-amber-400' : 'bg-rose-500'}`}
+				></span>
+				{wsState === 'live' ? 'live' : wsState === 'connecting' ? 'connecting…' : 'disconnected'}
+			</span>
+		{/if}
 	</div>
 
 	{#if tab === 'console'}
-		<div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-			<div bind:this={consoleEl} class="h-96 w-full"></div>
-			<form onsubmit={sendLine} class="mt-3 flex gap-2">
+		<div class="overflow-hidden rounded-xl border border-slate-800">
+			<div bind:this={consoleEl} class="h-[26rem] w-full bg-slate-950 p-2"></div>
+			<form
+				onsubmit={sendLine}
+				class="flex items-center gap-2 border-t border-slate-800 bg-slate-900/80 px-3 py-2.5"
+			>
+				<span class="font-mono text-sm text-emerald-400">$</span>
 				<input
-					class="flex-1 rounded border border-slate-700 bg-slate-800 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-emerald-500"
-					placeholder="Type a server command (e.g. list, say hello)…"
+					class="flex-1 bg-transparent font-mono text-sm text-slate-100 outline-none placeholder:text-slate-600"
+					placeholder="type a server command — e.g. list, say hello, time set day"
 					bind:value={inputLine}
 				/>
 				<button
 					type="submit"
-					class="rounded bg-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-600"
+					class="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
 				>
-					Send
+					Send ⏎
 				</button>
 			</form>
 		</div>
 	{:else}
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-			<div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
 				<div class="mb-2 flex items-center gap-2 text-sm">
-					<button class="text-slate-400 hover:text-slate-200" onclick={() => loadFiles('')}>root</button>
+					<button class="text-slate-400 transition hover:text-slate-200" onclick={() => loadFiles('')}>
+						root
+					</button>
 					{#if filePath}
 						<span class="font-mono text-slate-300">/{filePath}</span>
 					{/if}
 				</div>
 				<ul class="max-h-96 overflow-y-auto font-mono text-sm">
 					{#each files as f (f.name)}
-						<li class="flex items-center gap-2 border-b border-slate-800/60 py-1.5">
+						<li class="group flex items-center gap-2 border-b border-slate-800/50 py-1.5">
 							{#if f.is_dir}
 								<button
-									class="text-sky-300 hover:underline"
+									class="text-sky-300 transition hover:underline"
 									onclick={() => loadFiles(filePath ? `${filePath}/${f.name}` : f.name)}
 								>
 									{f.name}/
 								</button>
 							{:else}
-								<button class="text-slate-200 hover:underline" onclick={() => openFile(f.name)}>
+								<button
+									class="text-slate-200 transition hover:text-emerald-300 hover:underline"
+									onclick={() => openFile(f.name)}
+								>
 									{f.name}
 								</button>
 							{/if}
-							<span class="ml-auto text-xs text-slate-500">{f.size} B</span>
+							<span class="ml-auto text-xs text-slate-600">{f.size} B</span>
 							<button
-								class="text-xs text-rose-400 hover:text-rose-300"
+								class="text-xs text-rose-400/70 opacity-0 transition group-hover:opacity-100 hover:text-rose-300"
 								onclick={() => deleteFile(f.name, f.is_dir)}>del</button
 							>
 						</li>
@@ -247,18 +318,23 @@
 					{/each}
 				</ul>
 			</div>
-			<div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
+			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
 				{#if fileEditing}
-					<div class="mb-2 flex items-center gap-2 text-sm text-slate-300">
-						<span class="font-mono">{fileEditing}</span>
+					<div class="mb-2 flex items-center gap-2 text-sm">
+						<span class="font-mono text-slate-300">{fileEditing}</span>
 						<button
-							class="ml-auto rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+							class="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
 							onclick={saveFile}>Save</button
+						>
+						<button
+							class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500"
+							onclick={() => (fileEditing = '')}>Close</button
 						>
 					</div>
 					<textarea
-						class="h-80 w-full rounded border border-slate-700 bg-slate-800 p-2 font-mono text-xs text-slate-100 outline-none focus:border-emerald-500"
+						class="h-80 w-full rounded-lg border border-slate-700/80 bg-slate-950 p-3 font-mono text-xs text-slate-100 outline-none focus:border-emerald-500"
 						bind:value={fileContent}
+						spellcheck="false"
 					></textarea>
 				{:else}
 					<p class="text-sm text-slate-500">Select a file to view or edit it.</p>

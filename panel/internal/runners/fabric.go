@@ -106,9 +106,9 @@ func (f *Fabric) Resolve(ctx context.Context, mcVersion string) (Artifact, error
 	if err != nil {
 		return Artifact{}, fmt.Errorf("fabric launcher download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return Artifact{}, fmt.Errorf("fabric launcher download: status %d", resp.StatusCode)
 	}
 	h := sha256.New()

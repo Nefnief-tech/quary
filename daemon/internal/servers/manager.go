@@ -182,7 +182,7 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 	if err != nil {
 		return fmt.Errorf("download artifact: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download artifact: status %d", resp.StatusCode)
 	}
@@ -192,7 +192,7 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 	if err != nil {
 		return fmt.Errorf("write artifact: %w", err)
 	}
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 
 	hash256 := sha256.New()
 	prog := &progressWriter{
@@ -203,7 +203,7 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 	}
 	written, err := prog.copyTo(io.MultiWriter(out, hash256), resp.Body)
 	if err != nil && !errors.Is(err, io.EOF) {
-		out.Close()
+		_ = out.Close()
 		return fmt.Errorf("download artifact: %w", err)
 	}
 	_ = written
@@ -229,13 +229,13 @@ func (m *Manager) downloadArtifact(ctx context.Context, cmd *nodesv1.InstallServ
 
 type progressWriter struct {
 	total    int64
-	done     int64
 	serverID uuid.UUID
 	emit     Emitter
 	last     time.Time
 }
 
-// copyTo pumps bytes into w, emitting periodic progress events.
+// copyTo pumps bytes into w, emitting periodic progress events. It returns
+// nil only on clean EOF.
 func (p *progressWriter) copyTo(w io.Writer, r io.Reader) (int64, error) {
 	buf := make([]byte, 256*1024)
 	var done int64
@@ -257,6 +257,9 @@ func (p *progressWriter) copyTo(w io.Writer, r io.Reader) (int64, error) {
 			}
 		}
 		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return done, nil
+			}
 			return done, readErr
 		}
 	}
@@ -302,8 +305,8 @@ func (m *Manager) Start(ctx context.Context, cmd *nodesv1.StartServer, emit Emit
 
 	p := &process{console: console, spec: spec}
 	m.put(serverID, p)
-	m.watchConsole(serverID, p, emit)
-	m.startStats(serverID, p, emit)
+	m.watchConsole(serverID, p)
+	m.startStats(serverID, p)
 	emit.EmitStatus(serverID, "running", "")
 	return nil
 }
@@ -312,7 +315,7 @@ func (m *Manager) Start(ctx context.Context, cmd *nodesv1.StartServer, emit Emit
 // watchConsole pumps console lines upstream and detects container exit.
 // The emitter is resolved per event so channel reconnects keep output
 // flowing from already-registered processes.
-func (m *Manager) watchConsole(serverID uuid.UUID, p *process, emit Emitter) {
+func (m *Manager) watchConsole(serverID uuid.UUID, p *process) {
 	go func() {
 		for line := range p.console.Lines() {
 			if e := m.currentEmitter(); e != nil {
@@ -347,7 +350,7 @@ func (m *Manager) watchConsole(serverID uuid.UUID, p *process, emit Emitter) {
 }
 
 // startStats samples container stats and emits them with network rates.
-func (m *Manager) startStats(serverID uuid.UUID, p *process, emit Emitter) {
+func (m *Manager) startStats(serverID uuid.UUID, p *process) {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancelStats = cancel
 	var lastRx, lastTx float64
@@ -486,8 +489,8 @@ func (m *Manager) Reconcile(ctx context.Context, emit Emitter) {
 		}
 		p := &process{console: console}
 		m.put(id, p)
-		m.watchConsole(id, p, emit)
-		m.startStats(id, p, emit)
+		m.watchConsole(id, p)
+		m.startStats(id, p)
 		emit.EmitStatus(id, "running", "reattached after daemon restart")
 		m.log.Info("reconciled running server", "server_id", id)
 	}
@@ -547,7 +550,7 @@ func (m *Manager) ReadFile(serverID uuid.UUID, rel string, maxBytes int64) ([]by
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return io.ReadAll(io.LimitReader(f, maxBytes))
 }
 

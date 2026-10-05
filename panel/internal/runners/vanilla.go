@@ -118,9 +118,9 @@ func fetchJSON(ctx context.Context, client *http.Client, url string, dst any) er
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(dst)

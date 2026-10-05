@@ -66,7 +66,7 @@ func TestVanillaListAndResolve(t *testing.T) {
 	var ts *httptest.Server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 		  "latest": {"release": "1.21.1"},
 		  "versions": [
 		    {"id": "1.21.1", "type": "release", "url": "%s/meta/1.21.1.json",
@@ -79,7 +79,7 @@ func TestVanillaListAndResolve(t *testing.T) {
 		}`, ts.URL, ts.URL, ts.URL)
 	})
 	mux.HandleFunc("/meta/1.21.1.json", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{
+		_, _ = fmt.Fprintf(w, `{
 		  "downloads": {
 		    "server": {"url": "%s/server/1.21.1.jar", "sha1": "abc123", "size": 50000}
 		  }
