@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { api, type Runner, type Server } from '$lib/api';
 	import { auth } from '$lib/auth.svelte';
+	import TimeChart from '$lib/components/TimeChart.svelte';
 
 	let servers = $state<Server[]>([]);
 	let runners = $state<Runner[]>([]);
@@ -60,6 +61,27 @@
 
 	const selectedRunner = $derived(runners.find((r) => r.id === runnerId));
 	const runningCount = $derived(servers.filter((s) => s.status === 'running').length);
+
+	// chart points per server: CPU % and RAM % over the last five minutes
+	function chartPoints(s: Server) {
+		const hist = s.history ?? [];
+		return hist.map((h) => ({
+			t: new Date(h.t).getTime(),
+			values: [
+				h.cpu_percent,
+				h.memory_limit_mb > 0 ? (h.memory_used_mb / h.memory_limit_mb) * 100 : 0
+			]
+		}));
+	}
+	function lastPct(s: Server): { cpu: number; ram: number } {
+		const hist = s.history ?? [];
+		const h = hist[hist.length - 1];
+		if (!h) return { cpu: 0, ram: 0 };
+		return {
+			cpu: h.cpu_percent,
+			ram: h.memory_limit_mb > 0 ? (h.memory_used_mb / h.memory_limit_mb) * 100 : 0
+		};
+	}
 
 	async function create(e: SubmitEvent) {
 		e.preventDefault();
@@ -170,6 +192,30 @@
 					{server.status}
 				</span>
 			</div>
+			{#if (server.history?.length ?? 0) >= 2}
+				{@const pct = lastPct(server)}
+				<div class="mt-3">
+					<div class="mb-1 flex items-center gap-3 text-[10px] uppercase tracking-wider text-zinc-600">
+						<span class="flex items-center gap-1">
+							<span class="h-1 w-2.5 rounded-full bg-emerald-400"></span>
+							cpu <span class="mono normal-case text-zinc-400">{pct.cpu.toFixed(0)}%</span>
+						</span>
+						<span class="flex items-center gap-1">
+							<span class="h-1 w-2.5 rounded-full bg-sky-400"></span>
+							ram <span class="mono normal-case text-zinc-400">{pct.ram.toFixed(0)}%</span>
+						</span>
+						<span class="ml-auto normal-case">last 5 min</span>
+					</div>
+					<TimeChart
+						points={chartPoints(server)}
+						series={[
+							{ color: '#34d399' },
+							{ color: '#38bdf8' }
+						]}
+						height={36}
+					/>
+				</div>
+			{/if}
 			<div class="mt-3 flex items-center gap-2">
 				<span class="chip">{server.ip}:{server.port}</span>
 				<span class="chip">{server.memory_mb} MiB</span>

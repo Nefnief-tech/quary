@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, type Server } from '$lib/api';
+	import TimeChart from '$lib/components/TimeChart.svelte';
 
 	let server = $state<Server | null>(null);
 	let error = $state('');
@@ -262,6 +263,43 @@
 	);
 	const cpuPct = $derived(stats ? Math.min(100, stats.cpu_percent) : 0);
 
+	// activity: rolling five-minute chart series [cpu %, ram %, players % of
+	// slot max]. Seeded from the server's history, then live WS frames push.
+	const ACTIVITY_WINDOW = 5 * 60 * 1000;
+	let activity = $state<{ t: number; values: number[] }[]>([]);
+	let lastPlayersCount = $state(0);
+	let lastPlayersMax = $state(0);
+
+	function playersPct(count: number, max: number): number {
+		return max > 0 ? (count / max) * 100 : Math.min(100, count * 5);
+	}
+
+	function seedActivity(s: Server) {
+		activity = (s.history ?? []).map((h) => ({
+			t: new Date(h.t).getTime(),
+			values: [
+				h.cpu_percent,
+				h.memory_limit_mb > 0 ? (h.memory_used_mb / h.memory_limit_mb) * 100 : 0,
+				playersPct(h.players, 20)
+			]
+		}));
+	}
+
+	function pushActivity(cpu: number, memUsed: number, memLimit: number) {
+		const now = Date.now();
+		activity = [
+			...activity.filter((p) => now - p.t < ACTIVITY_WINDOW),
+			{
+				t: now,
+				values: [
+					Math.min(100, cpu),
+					memLimit > 0 ? (memUsed / memLimit) * 100 : 0,
+					playersPct(lastPlayersCount, lastPlayersMax)
+				]
+			}
+		];
+	}
+
 	async function loadFiles(path = '') {
 		try {
 			files = await api.get<typeof files>(
@@ -313,6 +351,7 @@
 		server = await api.get<Server>(`/api/v1/servers/${id}`);
 		loadFiles('');
 		players = await api.get<typeof players>(`/api/v1/servers/${id}/players`).catch(() => null);
+		seedActivity(server);
 		// Flush the DOM so the console element exists, then create the
 		// terminal *before* opening the socket — deterministic ordering.
 		await tick();
@@ -410,10 +449,17 @@
 				} else if (frame.type === 'status') {
 					if (server) server = { ...server, status: frame.status };
 					statusDetail = frame.detail ?? '';
-				} else if (frame.type === 'stats' && frame.stats) {
-					stats = frame.stats;
 				} else if (frame.type === 'players' && frame.players) {
 					players = frame.players;
+					lastPlayersCount = frame.players.online ?? 0;
+					lastPlayersMax = frame.players.max ?? 0;
+				} else if (frame.type === 'stats' && frame.stats) {
+					stats = frame.stats;
+					pushActivity(
+						frame.stats.cpu_percent,
+						frame.stats.memory_used_mb,
+						frame.stats.memory_limit_mb
+					);
 				} else if (frame.type === 'install') {
 					statusDetail = `install: ${frame.step} ${Math.round(frame.percent ?? 0)}%`;
 				}
@@ -528,6 +574,33 @@
 				></div>
 			</div>
 		</div>
+	</div>
+
+	<!-- Activity: last five minutes of CPU / RAM / players -->
+	<div class="card mb-6 p-4">
+		<div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+			<span>Activity</span>
+			<span class="font-normal normal-case text-zinc-600">last 5 minutes</span>
+			<span class="ml-auto flex flex-wrap items-center gap-3 font-normal">
+				<span class="flex items-center gap-1.5">
+					<span class="h-1 w-2.5 rounded-full bg-emerald-400"></span>
+					cpu <span class="mono text-zinc-400">{cpuPct.toFixed(0)}%</span>
+				</span>
+				<span class="flex items-center gap-1.5">
+					<span class="h-1 w-2.5 rounded-full bg-sky-400"></span>
+					ram <span class="mono text-zinc-400">{memPct.toFixed(0)}%</span>
+				</span>
+				<span class="flex items-center gap-1.5">
+					<span class="h-1 w-2.5 rounded-full bg-violet-400"></span>
+					players <span class="mono text-zinc-400">{players ? players.online : 0}</span>
+				</span>
+			</span>
+		</div>
+		<TimeChart
+			points={activity}
+			series={[{ color: '#34d399' }, { color: '#38bdf8' }, { color: '#a78bfa' }]}
+			height={72}
+		/>
 	</div>
 
 	{#if error}

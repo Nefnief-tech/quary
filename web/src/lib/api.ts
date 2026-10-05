@@ -23,6 +23,8 @@ export interface Server {
 	port: number;
 	/** Browser-reachable BlueMap webserver address; empty when no map. */
 	map_url?: string;
+	/** Last five minutes of activity samples for the charts. */
+	history?: { t: string; cpu_percent: number; memory_used_mb: number; memory_limit_mb: number; players: number }[];
 	created_at: string;
 }
 

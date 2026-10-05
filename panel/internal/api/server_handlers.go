@@ -36,8 +36,11 @@ type serverResponse struct {
 	Port       int32     `json:"port"`
 	// MapURL is the browser-reachable BlueMap webserver address; empty when
 	// the server has no preinstalled map.
-	MapURL    string    `json:"map_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	MapURL string `json:"map_url,omitempty"`
+	// History is the last five minutes of CPU/RAM/players samples for the
+	// activity graphs (nil while the server has not run recently).
+	History   []hub.Sample `json:"history,omitempty"`
+	CreatedAt time.Time    `json:"created_at"`
 }
 
 func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverResponse {
@@ -45,6 +48,7 @@ func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverRespon
 		ID: sv.ID, Name: sv.Name, OwnerID: sv.OwnerID, NodeID: sv.NodeID,
 		Runner: sv.Runner, MCVersion: sv.McVersion, Status: sv.Status,
 		MemoryMB: sv.MemoryMb, CPUPercent: sv.CpuPercent, CreatedAt: sv.CreatedAt,
+		History: s.hub.History(sv.ID),
 	}
 	if alloc, err := s.q.GetAllocationForServer(ctx, sv.ID); err == nil {
 		out.IP = alloc.Ip

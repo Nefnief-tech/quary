@@ -28,7 +28,22 @@ const (
 
 	// scrollbackLines are replayed on console connect.
 	scrollbackLines = 300
+
+	// statsWindow is how much stats history is kept per server and served
+	// to the UI graphs.
+	statsWindow = 5 * time.Minute
+	// historyCap bounds the ring even if stats arrive faster than expected.
+	historyCap = 200
 )
+
+// Sample is one point of server activity history.
+type Sample struct {
+	At       time.Time `json:"t"`
+	CPU      float64   `json:"cpu_percent"`
+	MemUsed  float64   `json:"memory_used_mb"`
+	MemLimit float64   `json:"memory_limit_mb"`
+	Players  int       `json:"players"`
+}
 
 // Event is one realtime update for a server.
 type Event struct {
@@ -70,6 +85,7 @@ type Hub struct {
 	stats      map[uuid.UUID]*StatsSnapshot
 	scrollback map[uuid.UUID][]string
 	players    map[uuid.UUID]*PlayerList
+	history    map[uuid.UUID][]Sample
 }
 
 func New() *Hub {
@@ -78,6 +94,7 @@ func New() *Hub {
 		stats:      map[uuid.UUID]*StatsSnapshot{},
 		scrollback: map[uuid.UUID][]string{},
 		players:    map[uuid.UUID]*PlayerList{},
+		history:    map[uuid.UUID][]Sample{},
 	}
 }
 
@@ -111,6 +128,19 @@ func (h *Hub) Publish(ev Event) {
 				TxBytesPerSec: ev.Stats.GetNetworkTxBytesPerSec(),
 				CollectedAt:   time.Now(),
 			}
+			// History samples ride along with every stats event; the player
+			// count is whatever the last poll observed.
+			players := 0
+			if p := h.players[ev.ServerID]; p != nil {
+				players = p.Online
+			}
+			h.appendHistoryLocked(ev.ServerID, Sample{
+				At:       time.Now(),
+				CPU:      ev.Stats.GetCpuPercent(),
+				MemUsed:  ev.Stats.GetMemoryUsedMb(),
+				MemLimit: ev.Stats.GetMemoryLimitMb(),
+				Players:  players,
+			})
 			h.mu.Unlock()
 		}
 	case EventConsole:
@@ -168,6 +198,46 @@ func (h *Hub) LatestPlayers(serverID uuid.UUID) (*PlayerList, bool) {
 	defer h.mu.RUnlock()
 	p, ok := h.players[serverID]
 	return p, ok
+}
+
+// appendHistoryLocked adds a sample and trims the ring to the window.
+// Callers hold h.mu for writing.
+func (h *Hub) appendHistoryLocked(serverID uuid.UUID, s Sample) {
+	hist := append(h.history[serverID], s)
+	cutoff := time.Now().Add(-statsWindow)
+	drop := 0
+	for drop < len(hist) && hist[drop].At.Before(cutoff) {
+		drop++
+	}
+	hist = hist[drop:]
+	if len(hist) > historyCap {
+		hist = hist[len(hist)-historyCap:]
+	}
+	h.history[serverID] = hist
+}
+
+// History returns the stats samples of the last statsWindow for a server,
+// oldest first. Stale samples (nothing arrived recently) age out.
+func (h *Hub) History(serverID uuid.UUID) []Sample {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	hist := h.history[serverID]
+	cutoff := time.Now().Add(-statsWindow)
+	drop := 0
+	for drop < len(hist) && hist[drop].At.Before(cutoff) {
+		drop++
+	}
+	hist = hist[drop:]
+	if len(hist) == 0 {
+		if h.history[serverID] != nil {
+			h.history[serverID] = nil
+		}
+		return nil
+	}
+	out := make([]Sample, len(hist))
+	copy(out, hist)
+	h.history[serverID] = hist
+	return out
 }
 
 // SetPlayers stores a snapshot (used to clear the list on stop).
