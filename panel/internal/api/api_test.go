@@ -18,7 +18,9 @@ import (
 	"quarry.dev/quarry/panel/internal/auth"
 	"quarry.dev/quarry/panel/internal/config"
 	"quarry.dev/quarry/panel/internal/db/gen"
+	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/nodes"
+	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/testutil"
 )
 
@@ -39,12 +41,18 @@ func newTestServer(t *testing.T) *httptest.Server {
 	nodeSvc := nodes.NewService(pool, q, ca, audit.New(q, log), log)
 
 	cfg := config.Config{Env: "dev", SessionLifetime: time.Hour}
-	srv := api.New(cfg, log, pool,
-		auth.NewSessions(q, cfg.SessionLifetime),
-		auth.NewAPIKeys(q),
-		audit.New(q, log),
-		nodeSvc,
-	)
+	srv := api.New(api.Deps{
+		Cfg:      cfg,
+		Log:      log,
+		Pool:     pool,
+		Sessions: auth.NewSessions(q, cfg.SessionLifetime),
+		Keys:     auth.NewAPIKeys(q),
+		AuditLog: audit.New(q, log),
+		Nodes:    nodeSvc,
+		Catalog:  runners.NewCatalog(q, log),
+		Hub:      hub.New(),
+		SealKey:  bytes.Repeat([]byte{2}, seal.KeySize),
+	})
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	return ts

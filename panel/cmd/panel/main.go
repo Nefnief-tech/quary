@@ -27,8 +27,11 @@ import (
 	"quarry.dev/quarry/panel/internal/config"
 	"quarry.dev/quarry/panel/internal/db"
 	"quarry.dev/quarry/panel/internal/db/gen"
+	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/logging"
 	"quarry.dev/quarry/panel/internal/nodes"
+	"quarry.dev/quarry/panel/internal/runners"
+	"quarry.dev/quarry/panel/internal/servers"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
@@ -64,6 +67,7 @@ type runtime struct {
 	keys     *auth.APIKeys
 	auditLog *audit.Logger
 	ca       *nodes.CA
+	sealKey  []byte
 }
 
 // boot loads config, connects, migrates and builds the runtime.
@@ -116,6 +120,7 @@ func boot(log *slog.Logger) (config.Config, *runtime, error) {
 		keys:     auth.NewAPIKeys(q),
 		auditLog: audit.New(q, log),
 		ca:       ca,
+		sealKey:  sealKey,
 	}, nil
 }
 
@@ -132,9 +137,30 @@ func cmdServe() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Realtime hub + node channel registry + runner catalog
+	hub := hub.New()
+	chanMgr := nodes.NewChannelManager(log)
+	catalog := runners.NewCatalog(rt.q, log)
+
+	// Server orchestration (create/power/events)
+	serverSvc := servers.NewService(rt.pool, rt.q, hub, chanMgr, catalog, log)
+
 	// HTTP API + node services
 	nodeSvc := nodes.NewService(rt.pool, rt.q, rt.ca, rt.auditLog, log)
-	apiServer := api.New(cfg, log, rt.pool, rt.sessions, rt.keys, rt.auditLog, nodeSvc)
+	apiServer := api.New(api.Deps{
+		Cfg:      cfg,
+		Log:      log,
+		Pool:     rt.pool,
+		Sessions: rt.sessions,
+		Keys:     rt.keys,
+		AuditLog: rt.auditLog,
+		Nodes:    nodeSvc,
+		Servers:  serverSvc,
+		Channels: chanMgr,
+		Catalog:  catalog,
+		Hub:      hub,
+		SealKey:  rt.sealKey,
+	})
 	go func() {
 		if err := apiServer.Run(ctx); err != nil {
 			log.Error("http server failed", "err", err)
@@ -142,13 +168,14 @@ func cmdServe() {
 		}
 	}()
 
-	// Node gRPC (mTLS)
+	// Node gRPC (mTLS); daemon events flow into the hub/server service.
 	lis, gs, err := nodes.NewListener(cfg, rt.ca)
 	if err != nil {
 		log.Error("grpc listener failed", "err", err)
 		os.Exit(1)
 	}
-	nodesv1.RegisterNodeAgentServiceServer(gs, nodes.NewGRPCServer(nodeSvc, log))
+	grpcServer := nodes.NewGRPCServer(nodeSvc, log, chanMgr, serverSvc.HandleEvent)
+	nodesv1.RegisterNodeAgentServiceServer(gs, grpcServer)
 	go func() {
 		log.Info("node grpc listening", "addr", cfg.GRPCAddr)
 		if err := gs.Serve(lis); err != nil {

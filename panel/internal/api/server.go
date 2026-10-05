@@ -16,43 +16,65 @@ import (
 	"quarry.dev/quarry/panel/internal/auth"
 	"quarry.dev/quarry/panel/internal/config"
 	"quarry.dev/quarry/panel/internal/db/gen"
+	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/nodes"
+	"quarry.dev/quarry/panel/internal/runners"
+	"quarry.dev/quarry/panel/internal/servers"
 )
 
 // Server wires the API's dependencies together.
 type Server struct {
-	cfg      config.Config
-	log      *slog.Logger
-	pool     *pgxpool.Pool
-	q        *gen.Queries
-	sessions *auth.Sessions
-	keys     *auth.APIKeys
-	auditLog *audit.Logger
-	nodeSvc  *nodes.Service
-	limiter  *auth.LoginLimiter
+	cfg       config.Config
+	log       *slog.Logger
+	pool      *pgxpool.Pool
+	q         *gen.Queries
+	sessions  *auth.Sessions
+	keys      *auth.APIKeys
+	auditLog  *audit.Logger
+	nodeSvc   *nodes.Service
+	serverSvc *servers.Service
+	channels  *nodes.ChannelManager
+	catalog   *runners.Catalog
+	hub       *hub.Hub
+	sealKey   []byte
+	limiter   *auth.LoginLimiter
 }
 
-func New(
-	cfg config.Config,
-	log *slog.Logger,
-	pool *pgxpool.Pool,
-	sessions *auth.Sessions,
-	keys *auth.APIKeys,
-	auditLog *audit.Logger,
-	nodeSvc *nodes.Service,
-) *Server {
+// Deps bundles everything the API needs.
+type Deps struct {
+	Cfg      config.Config
+	Log      *slog.Logger
+	Pool     *pgxpool.Pool
+	Sessions *auth.Sessions
+	Keys     *auth.APIKeys
+	AuditLog *audit.Logger
+	Nodes    *nodes.Service
+	Servers  *servers.Service
+	Channels *nodes.ChannelManager
+	Catalog  *runners.Catalog
+	Hub      *hub.Hub
+	SealKey  []byte
+}
+
+func New(d Deps) *Server {
 	return &Server{
-		cfg:      cfg,
-		log:      log,
-		pool:     pool,
-		q:        gen.New(pool),
-		sessions: sessions,
-		keys:     keys,
-		auditLog: auditLog,
-		nodeSvc:  nodeSvc,
-		limiter:  auth.NewLoginLimiter(15*time.Second, 5),
+		cfg:       d.Cfg,
+		log:       d.Log,
+		pool:      d.Pool,
+		q:         gen.New(d.Pool),
+		sessions:  d.Sessions,
+		keys:      d.Keys,
+		auditLog:  d.AuditLog,
+		nodeSvc:   d.Nodes,
+		serverSvc: d.Servers,
+		channels:  d.Channels,
+		catalog:   d.Catalog,
+		hub:       d.Hub,
+		sealKey:   d.SealKey,
+		limiter:   auth.NewLoginLimiter(15*time.Second, 5),
 	}
 }
+
 
 // Run serves HTTP until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {

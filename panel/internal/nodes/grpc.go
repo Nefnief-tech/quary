@@ -22,12 +22,15 @@ import (
 // GRPCServer implements nodesv1.NodeAgentServiceServer.
 type GRPCServer struct {
 	nodesv1.UnimplementedNodeAgentServiceServer
-	svc *Service
-	log *slog.Logger
+	svc     *Service
+	log     *slog.Logger
+	chanMgr *ChannelManager
+	// onEvent receives daemon events (console, stats, status).
+	onEvent func(*nodesv1.Event)
 }
 
-func NewGRPCServer(svc *Service, log *slog.Logger) *GRPCServer {
-	return &GRPCServer{svc: svc, log: log}
+func NewGRPCServer(svc *Service, log *slog.Logger, chanMgr *ChannelManager, onEvent func(*nodesv1.Event)) *GRPCServer {
+	return &GRPCServer{svc: svc, log: log, chanMgr: chanMgr, onEvent: onEvent}
 }
 
 func (g *GRPCServer) RegisterNode(ctx context.Context, req *nodesv1.RegisterNodeRequest) (*nodesv1.RegisterNodeResponse, error) {
@@ -66,6 +69,44 @@ func (g *GRPCServer) Heartbeat(stream nodesv1.NodeAgentService_HeartbeatServer) 
 			ServerTimeUnixMilli: time.Now().UnixMilli(),
 		}); err != nil {
 			return err
+		}
+	}
+}
+
+// Channel serves one daemon's long-lived command stream.
+func (g *GRPCServer) Channel(stream nodesv1.NodeAgentService_ChannelServer) error {
+	nodeID, ok := NodeIDFromStreamContext(stream.Context())
+	if !ok {
+		return status.Error(codes.Unauthenticated, ErrNotNode.Error())
+	}
+	conn, done := g.chanMgr.Register(nodeID)
+	defer done()
+	g.log.Info("node channel open", "node_id", nodeID)
+
+	// Forward panel commands down to the daemon.
+	forwardDone := make(chan struct{})
+	go func() {
+		defer close(forwardDone)
+		for msg := range conn.send {
+			if err := stream.Send(msg); err != nil {
+				return
+			}
+		}
+	}()
+
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			g.log.Info("node channel closed", "node_id", nodeID, "err", err)
+			return err
+		}
+		switch payload := msg.GetPayload().(type) {
+		case *nodesv1.ChannelRequest_Result:
+			conn.deliver(payload.Result)
+		case *nodesv1.ChannelRequest_Event:
+			if g.onEvent != nil && payload.Event != nil {
+				g.onEvent(payload.Event)
+			}
 		}
 	}
 }

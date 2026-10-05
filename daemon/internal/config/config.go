@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,11 @@ type Config struct {
 	EnrollmentToken string
 	// DataDir holds the daemon identity (keys) — keep it persistent.
 	DataDir string
+	// ServersRoot holds per-server data directories.
+	ServersRoot string
+	// ArtifactAllowCIDRs exempts internal artifact mirrors from the SSRF
+	// policy (comma-separated; empty = public addresses only).
+	ArtifactAllowCIDRs []string
 	// CAFile is the path to the panel CA certificate (PEM).
 	CAFile string
 	// ServerName optionally overrides the TLS server name for verification
@@ -34,9 +40,17 @@ func Load() (Config, error) {
 		NodeName:          os.Getenv("QUARRY_NODE_NAME"),
 		EnrollmentToken:   os.Getenv("QUARRY_ENROLLMENT_TOKEN"),
 		DataDir:           envOr("QUARRY_DATA_DIR", "./data"),
+		ServersRoot:       envOr("QUARRY_SERVERS_DIR", "./data/servers"),
 		CAFile:            os.Getenv("QUARRY_CA_FILE"),
 		ServerName:        os.Getenv("QUARRY_TLS_SERVER_NAME"),
 		HeartbeatInterval: 10 * time.Second,
+	}
+	if raw := os.Getenv("QUARRY_ARTIFACT_ALLOW_CIDRS"); raw != "" {
+		for _, cidr := range strings.Split(raw, ",") {
+			if cidr = strings.TrimSpace(cidr); cidr != "" {
+				c.ArtifactAllowCIDRs = append(c.ArtifactAllowCIDRs, cidr)
+			}
+		}
 	}
 	if c.PanelAddr == "" {
 		return c, errors.New("QUARRY_PANEL_ADDR is required")

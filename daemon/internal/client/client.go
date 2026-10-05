@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"quarry.dev/quarry/daemon/internal/config"
+	"quarry.dev/quarry/daemon/internal/servers"
 	"quarry.dev/quarry/daemon/internal/state"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
@@ -34,13 +35,14 @@ var Version = "dev"
 var errReenrolled = errors.New("enrolled; redialing with new identity")
 
 type Client struct {
-	cfg   config.Config
-	store *state.Store
-	log   *slog.Logger
+	cfg     config.Config
+	store   *state.Store
+	log     *slog.Logger
+	manager *servers.Manager
 }
 
-func New(cfg config.Config, store *state.Store, log *slog.Logger) *Client {
-	return &Client{cfg: cfg, store: store, log: log}
+func New(cfg config.Config, store *state.Store, log *slog.Logger, manager *servers.Manager) *Client {
+	return &Client{cfg: cfg, store: store, log: log, manager: manager}
 }
 
 // Run keeps the daemon connected until ctx is cancelled, reconnecting with
@@ -92,7 +94,17 @@ func (c *Client) runOnce(ctx context.Context) error {
 		return errReenrolled
 	}
 
-	return c.heartbeat(ctx, api)
+	// Heartbeat and command channel run in parallel; either failing tears
+	// the connection down and the outer loop reconnects.
+	errCh := make(chan error, 2)
+	go func() { errCh <- c.heartbeat(ctx, api) }()
+	go func() { errCh <- c.runChannel(ctx, api) }()
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		return err
+	}
 }
 
 // dial builds the gRPC connection: TLS with the panel CA pinned, plus the

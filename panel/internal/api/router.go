@@ -41,5 +41,29 @@ func (s *Server) Router() http.Handler {
 	// Audit log (admin)
 	mux.Handle("GET /api/v1/audit", s.requirePerm("audit.read", http.HandlerFunc(s.listAudit)))
 
+	// Runners (version catalog for the create form)
+	mux.Handle("GET /api/v1/runners", s.requireAuth(http.HandlerFunc(s.listRunners)))
+
+	// Node allocations (admin)
+	mux.Handle("POST /api/v1/nodes/{id}/allocations", s.requirePerm("node.create", http.HandlerFunc(s.createAllocations)))
+	mux.Handle("GET /api/v1/nodes/{id}/allocations", s.requirePerm("node.read", http.HandlerFunc(s.listAllocations)))
+
+	// Servers
+	mux.Handle("GET /api/v1/servers", s.requireAuth(http.HandlerFunc(s.listServers)))
+	mux.Handle("POST /api/v1/servers", s.requirePerm("server.create", http.HandlerFunc(s.createServer)))
+	mux.Handle("GET /api/v1/servers/{id}", s.requireAuth(http.HandlerFunc(s.getServer)))
+	mux.Handle("DELETE /api/v1/servers/{id}", s.requireAuth(http.HandlerFunc(s.deleteServer)))
+	mux.Handle("POST /api/v1/servers/{id}/power", s.requirePerm("server.power", http.HandlerFunc(s.powerServer)))
+	mux.Handle("GET /api/v1/servers/{id}/console/token", s.requirePerm("console.read", http.HandlerFunc(s.consoleToken)))
+	// The WS endpoint authenticates via its short-lived token, not sessions.
+	mux.Handle("GET /api/v1/servers/{id}/console", http.HandlerFunc(s.consoleWS))
+	mux.Handle("GET /api/v1/servers/{id}/stats", s.requirePerm("console.read", http.HandlerFunc(s.latestStats)))
+
+	// Server files
+	mux.Handle("GET /api/v1/servers/{id}/files", s.requirePerm("file.read", http.HandlerFunc(s.listServerFiles)))
+	mux.Handle("GET /api/v1/servers/{id}/files/content", s.requirePerm("file.read", http.HandlerFunc(s.readServerFile)))
+	mux.Handle("PUT /api/v1/servers/{id}/files/content", s.requirePerm("file.write", http.HandlerFunc(s.writeServerFile)))
+	mux.Handle("DELETE /api/v1/servers/{id}/files", s.requirePerm("file.write", http.HandlerFunc(s.deleteServerFile)))
+
 	return s.recoverPanics(s.requestLog(s.authenticate(mux)))
 }

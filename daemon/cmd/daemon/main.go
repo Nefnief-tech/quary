@@ -13,6 +13,8 @@ import (
 	"quarry.dev/quarry/daemon/internal/client"
 	"quarry.dev/quarry/daemon/internal/config"
 	"quarry.dev/quarry/daemon/internal/logging"
+	"quarry.dev/quarry/daemon/internal/runtime"
+	"quarry.dev/quarry/daemon/internal/servers"
 	"quarry.dev/quarry/daemon/internal/state"
 )
 
@@ -35,6 +37,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	rt, err := runtime.NewDocker()
+	if err != nil {
+		log.Error("docker runtime init failed", "err", err)
+		os.Exit(1)
+	}
+	manager, err := servers.NewManager(servers.Config{
+		ServersRoot:        cfg.ServersRoot,
+		ArtifactAllowCIDRs: cfg.ArtifactAllowCIDRs,
+	}, rt, log)
+	if err != nil {
+		log.Error("server manager init failed", "err", err)
+		os.Exit(1)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -43,7 +59,7 @@ func main() {
 		"node", cfg.NodeName,
 		"data_dir", cfg.DataDir,
 	)
-	if err := client.New(cfg, store, log).Run(ctx); err != nil {
+	if err := client.New(cfg, store, log, manager).Run(ctx); err != nil {
 		log.Error("daemon failed", "err", err)
 		os.Exit(1)
 	}
