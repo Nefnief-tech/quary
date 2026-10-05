@@ -96,33 +96,57 @@
 	onMount(async () => {
 		server = await api.get<Server>(`/api/v1/servers/${id}`);
 		loadFiles('');
-
-		if (consoleEl) {
-			const { Terminal } = await import('@xterm/xterm');
-			const { FitAddon } = await import('@xterm/addon-fit');
-			term = new Terminal({
-				convertEol: true,
-				fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-				fontSize: 12.5,
-				theme: {
-					background: '#0b1120',
-					foreground: '#cbd5e1',
-					cursor: '#34d399',
-					green: '#34d399',
-					yellow: '#fbbf24',
-					red: '#fb7185'
-				}
-			});
-			fit = new FitAddon();
-			term.loadAddon(fit);
-			term.open(consoleEl);
-			fit.fit();
-			resizeObs = new ResizeObserver(() => fit?.fit());
-			resizeObs.observe(consoleEl);
-		}
-
 		connectConsole();
 	});
+
+	// The console div is inside {#if server}, so it only exists after the
+	// server loads — and again on every Console-tab switch. This effect
+	// (re)binds the terminal whenever a fresh element appears.
+	let termBoundTo: HTMLDivElement | null = null;
+	$effect(() => {
+		const el = consoleEl;
+		if (el && el !== termBoundTo && tab === 'console') {
+			termBoundTo = el;
+			void initTerminal(el);
+		}
+	});
+
+	async function initTerminal(el: HTMLDivElement) {
+		const { Terminal } = await import('@xterm/xterm');
+		const { FitAddon } = await import('@xterm/addon-fit');
+		term?.dispose();
+		term = new Terminal({
+			convertEol: true,
+			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+			fontSize: 12.5,
+			theme: {
+				background: '#0b1120',
+				foreground: '#cbd5e1',
+				cursor: '#34d399',
+				green: '#34d399',
+				yellow: '#fbbf24',
+				red: '#fb7185'
+			}
+		});
+		fit = new FitAddon();
+		term.loadAddon(fit);
+		term.open(el);
+		fit.fit();
+		resizeObs?.disconnect();
+		resizeObs = new ResizeObserver(() => fit?.fit());
+		resizeObs.observe(el);
+
+		// Replay history; the live stream keeps flowing through ws.onmessage.
+		try {
+			const t = await api.get<{ token: string; scrollback: string[] }>(
+				`/api/v1/servers/${id}/console/token`
+			);
+			for (const line of t.scrollback ?? []) term.writeln(line);
+			term.writeln('— connected —');
+		} catch {
+			term.writeln('— connected (history unavailable) —');
+		}
+	}
 
 	// connectConsole mints a fresh token and opens the console WebSocket.
 	// On drop it retries with capped backoff so panel/daemon restarts heal
