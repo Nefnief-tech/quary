@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -22,7 +25,9 @@ func Identity(r *http.Request) *auth.Identity {
 	return id
 }
 
-// statusRecorder captures the response status for request logging.
+// statusRecorder captures the response status for request logging and
+// forwards Hijack/Flush so WebSocket upgrades and streaming still work
+// through the wrapper.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -31,6 +36,20 @@ type statusRecorder struct {
 func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := s.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response writer does not support hijacking")
+	}
+	return h.Hijack()
+}
+
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // requestLog logs method, path, status, duration and user — never headers

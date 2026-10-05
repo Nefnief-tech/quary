@@ -16,12 +16,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/lifecycle"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/runners"
+	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
 const defaultStopGraceSeconds = 30
@@ -35,10 +35,10 @@ var (
 
 // Config is the runtime install snapshot persisted in servers.config.
 type Config struct {
-	Image  string   `json:"image"`
-	Launch []string `json:"launch"`
-	BindIP string   `json:"bind_ip"`
-	BindPort int32  `json:"bind_port"`
+	Image    string   `json:"image"`
+	Launch   []string `json:"launch"`
+	BindIP   string   `json:"bind_ip"`
+	BindPort int32    `json:"bind_port"`
 	Artifact struct {
 		URL    string `json:"url"`
 		SHA256 string `json:"sha256,omitempty"`
@@ -177,7 +177,9 @@ func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, req CreateReque
 				detail = result.GetError()
 			}
 			s.log.Error("server install failed", "server_id", serverID, "err", detail)
-			s.hub.Publish(hub.Event{Type: hub.EventStatus, ServerID: serverID, Status: "crashed", Detail: detail})
+			// Route through handleStatus so the DB row transitions, not just
+			// the realtime subscribers.
+			s.handleStatus(serverID, &nodesv1.StatusChange{Status: "crashed", Detail: detail})
 		}
 	}()
 
@@ -333,11 +335,20 @@ func (s *Service) handleStatus(serverID uuid.UUID, change *nodesv1.StatusChange)
 	}
 }
 
-// Delete removes an offline server and wipes its data directory on the node.
+// Delete removes a server and wipes its data directory on the node.
+// Installing servers can be deleted too: nothing is running yet, and a late
+// install result is ignored once the row is gone.
 func (s *Service) Delete(ctx context.Context, server gen.Server) error {
 	status := lifecycle.Status(server.Status)
-	if status != lifecycle.Offline && status != lifecycle.Crashed {
+	switch status {
+	case lifecycle.Offline, lifecycle.Crashed, lifecycle.Installing:
+	default:
 		return fmt.Errorf("%w: stop the server before deleting", ErrBadState)
+	}
+	if status == lifecycle.Installing {
+		_ = s.q.SetServerStatus(ctx, gen.SetServerStatusParams{
+			ID: server.ID, Status: string(lifecycle.Offline),
+		})
 	}
 	// Best-effort data wipe; the row goes regardless.
 	if s.channels.Connected(server.NodeID) {

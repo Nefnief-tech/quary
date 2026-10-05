@@ -100,6 +100,9 @@ func (c *Client) runChannel(ctx context.Context, api nodesv1.NodeAgentServiceCli
 	em := newEmitter(c.log)
 	go em.pump(ctx, stream)
 
+	// Long-lived pumps must follow reconnects.
+	c.manager.SetEmitter(em)
+
 	// Adopt containers left running by a previous daemon instance.
 	c.manager.Reconcile(ctx, em)
 

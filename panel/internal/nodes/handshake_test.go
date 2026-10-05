@@ -23,12 +23,12 @@ import (
 	"google.golang.org/grpc/status"
 
 	"quarry.dev/quarry/internal/seal"
-	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 	"quarry.dev/quarry/panel/internal/audit"
 	"quarry.dev/quarry/panel/internal/config"
 	"quarry.dev/quarry/panel/internal/db/gen"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/testutil"
+	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
 // TestHandshake covers the Phase 0 node contract end to end against a real

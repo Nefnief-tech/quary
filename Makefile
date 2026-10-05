@@ -33,7 +33,7 @@ proto: ## Regenerate protobuf/gRPC code
 dev: ## Bring up the dev stack (postgres + panel + daemon + web)
 	@if [ ! -f deploy/.env ]; then \
 		passwd=$$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'); \
-		printf 'POSTGRES_DB=quarry\nPOSTGRES_USER=quarry\nPOSTGRES_PASSWORD=%s\nQUARRY_ENROLLMENT_TOKEN=\nQUARRY_DOCKER_UID=%s\nQUARRY_DOCKER_GID=%s\n' "$$passwd" "$$(id -u)" "$$(id -g)" > deploy/.env; \
+		printf 'POSTGRES_DB=quarry\nPOSTGRES_USER=quarry\nPOSTGRES_PASSWORD=%s\nQUARRY_ENROLLMENT_TOKEN=\nQUARRY_DOCKER_UID=%s\nQUARRY_DOCKER_GID=%s\nQUARRY_DOCKER_SOCK_GID=%s\n' "$$passwd" "$$(id -u)" "$$(id -g)" "$$(stat -c %g /var/run/docker.sock 2>/dev/null || echo 999)" > deploy/.env; \
 		echo "generated deploy/.env with a random database password"; \
 	fi
 	mkdir -p data/servers data/daemon

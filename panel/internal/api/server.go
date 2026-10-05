@@ -75,7 +75,6 @@ func New(d Deps) *Server {
 	}
 }
 
-
 // Run serves HTTP until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {
 	srv := &http.Server{

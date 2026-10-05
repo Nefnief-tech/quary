@@ -50,8 +50,25 @@ type Manager struct {
 	guard *ssrf.Guard
 	log   *slog.Logger
 
-	mu    sync.RWMutex
-	procs map[uuid.UUID]*process
+	mu      sync.RWMutex
+	procs   map[uuid.UUID]*process
+	emMu    sync.RWMutex
+	emitter Emitter
+}
+
+// SetEmitter points long-lived pumps (console, stats) at the current
+// channel's emitter. Called on every channel (re)connect so output keeps
+// flowing after panel restarts.
+func (m *Manager) SetEmitter(e Emitter) {
+	m.emMu.Lock()
+	defer m.emMu.Unlock()
+	m.emitter = e
+}
+
+func (m *Manager) currentEmitter() Emitter {
+	m.emMu.RLock()
+	defer m.emMu.RUnlock()
+	return m.emitter
 }
 
 type process struct {
@@ -292,10 +309,15 @@ func (m *Manager) Start(ctx context.Context, cmd *nodesv1.StartServer, emit Emit
 }
 
 // watchConsole pumps console lines upstream and detects container exit.
+// watchConsole pumps console lines upstream and detects container exit.
+// The emitter is resolved per event so channel reconnects keep output
+// flowing from already-registered processes.
 func (m *Manager) watchConsole(serverID uuid.UUID, p *process, emit Emitter) {
 	go func() {
 		for line := range p.console.Lines() {
-			emit.EmitConsole(serverID, line)
+			if e := m.currentEmitter(); e != nil {
+				e.EmitConsole(serverID, line)
+			}
 		}
 		// Streams ended: the container exited.
 		m.drop(serverID)
@@ -311,13 +333,15 @@ func (m *Manager) watchConsole(serverID uuid.UUID, p *process, emit Emitter) {
 		state, _ := m.rt.State(ctx, serverID)
 		_ = m.rt.Remove(ctx, serverID)
 
-		switch {
-		case expected:
-			emit.EmitStatus(serverID, "offline", "")
-		case state == "exited":
-			emit.EmitStatus(serverID, "crashed", "container exited unexpectedly")
-		default:
-			emit.EmitStatus(serverID, "crashed", "container streams ended (state="+state+")")
+		if e := m.currentEmitter(); e != nil {
+			switch {
+			case expected:
+				e.EmitStatus(serverID, "offline", "")
+			case state == "exited":
+				e.EmitStatus(serverID, "crashed", "container exited unexpectedly")
+			default:
+				e.EmitStatus(serverID, "crashed", "container streams ended (state="+state+")")
+			}
 		}
 	}()
 }
@@ -350,7 +374,9 @@ func (m *Manager) startStats(serverID uuid.UUID, p *process, emit Emitter) {
 					NetworkTxBytesPerSec: (s.NetworkTxPerSec - lastTx) / interval,
 				}
 				lastRx, lastTx = s.NetworkRxPerSec, s.NetworkTxPerSec
-				emit.EmitStats(serverID, stats)
+				if e := m.currentEmitter(); e != nil {
+					e.EmitStats(serverID, stats)
+				}
 			}
 		}
 	}()

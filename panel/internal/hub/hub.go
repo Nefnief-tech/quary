@@ -31,23 +31,23 @@ const (
 
 // Event is one realtime update for a server.
 type Event struct {
-	Type       string
-	ServerID   uuid.UUID
-	Console    *nodesv1.ConsoleLine
-	Stats      *nodesv1.ServerStats
-	Status     string
-	Detail     string
-	Install    *nodesv1.InstallProgress
+	Type     string
+	ServerID uuid.UUID
+	Console  *nodesv1.ConsoleLine
+	Stats    *nodesv1.ServerStats
+	Status   string
+	Detail   string
+	Install  *nodesv1.InstallProgress
 }
 
 // StatsSnapshot is the pollable latest stats value.
 type StatsSnapshot struct {
-	CPUPercent     float64   `json:"cpu_percent"`
-	MemoryUsedMB   float64   `json:"memory_used_mb"`
-	MemoryLimitMB  float64   `json:"memory_limit_mb"`
-	RxBytesPerSec  float64   `json:"network_rx_bps"`
-	TxBytesPerSec  float64   `json:"network_tx_bps"`
-	CollectedAt    time.Time `json:"collected_at"`
+	CPUPercent    float64   `json:"cpu_percent"`
+	MemoryUsedMB  float64   `json:"memory_used_mb"`
+	MemoryLimitMB float64   `json:"memory_limit_mb"`
+	RxBytesPerSec float64   `json:"network_rx_bps"`
+	TxBytesPerSec float64   `json:"network_tx_bps"`
+	CollectedAt   time.Time `json:"collected_at"`
 }
 
 type subscription struct {
@@ -56,10 +56,10 @@ type subscription struct {
 
 // Hub fans out events per server.
 type Hub struct {
-	mu          sync.RWMutex
-	subs        map[uuid.UUID]map[*subscription]struct{}
-	stats       map[uuid.UUID]*StatsSnapshot
-	scrollback  map[uuid.UUID][]string
+	mu         sync.RWMutex
+	subs       map[uuid.UUID]map[*subscription]struct{}
+	stats      map[uuid.UUID]*StatsSnapshot
+	scrollback map[uuid.UUID][]string
 }
 
 func New() *Hub {
@@ -93,12 +93,12 @@ func (h *Hub) Publish(ev Event) {
 		if ev.Stats != nil {
 			h.mu.Lock()
 			h.stats[ev.ServerID] = &StatsSnapshot{
-				CPUPercent: ev.Stats.GetCpuPercent(),
-				MemoryUsedMB: ev.Stats.GetMemoryUsedMb(),
+				CPUPercent:    ev.Stats.GetCpuPercent(),
+				MemoryUsedMB:  ev.Stats.GetMemoryUsedMb(),
 				MemoryLimitMB: ev.Stats.GetMemoryLimitMb(),
 				RxBytesPerSec: ev.Stats.GetNetworkRxBytesPerSec(),
 				TxBytesPerSec: ev.Stats.GetNetworkTxBytesPerSec(),
-				CollectedAt: time.Now(),
+				CollectedAt:   time.Now(),
 			}
 			h.mu.Unlock()
 		}

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -115,8 +116,15 @@ func TestLifecycleWithDocker(t *testing.T) {
 	}
 
 	emit := newFakeEmitter()
+	mgr.SetEmitter(emit)
 	serverID := uuid.New()
-	bindPort := 25590 // fixed; container binds all interfaces by default
+	// Grab a free host port to avoid clashes with parallel runs.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindPort := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
 
 	// --- Install ---
 	err = mgr.Install(ctx, &nodesv1.InstallServer{

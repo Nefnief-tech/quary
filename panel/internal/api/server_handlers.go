@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 	"quarry.dev/quarry/panel/internal/audit"
 	"quarry.dev/quarry/panel/internal/auth"
 	"quarry.dev/quarry/panel/internal/db/gen"
@@ -18,22 +17,23 @@ import (
 	"quarry.dev/quarry/panel/internal/lifecycle"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/servers"
+	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
 // serverResponse is the API view of a server.
 type serverResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	OwnerID   uuid.UUID `json:"owner_id"`
-	NodeID    uuid.UUID `json:"node_id"`
-	Runner    string    `json:"runner"`
-	MCVersion string    `json:"mc_version"`
-	Status    string    `json:"status"`
-	MemoryMB  int32     `json:"memory_mb"`
-	CPUPercent int32    `json:"cpu_percent"`
-	IP        string    `json:"ip"`
-	Port      int32     `json:"port"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	OwnerID    uuid.UUID `json:"owner_id"`
+	NodeID     uuid.UUID `json:"node_id"`
+	Runner     string    `json:"runner"`
+	MCVersion  string    `json:"mc_version"`
+	Status     string    `json:"status"`
+	MemoryMB   int32     `json:"memory_mb"`
+	CPUPercent int32     `json:"cpu_percent"`
+	IP         string    `json:"ip"`
+	Port       int32     `json:"port"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func (s *Server) serverResponse(ctx context.Context, sv gen.Server) serverResponse {
@@ -597,4 +597,3 @@ func writeRawJSON(w http.ResponseWriter, raw []byte) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
 }
-

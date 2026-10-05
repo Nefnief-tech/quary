@@ -17,15 +17,15 @@ import (
 )
 
 var (
-	ErrNodeOffline     = errors.New("node is not connected")
-	ErrCommandTimeout  = errors.New("command timed out")
+	ErrNodeOffline    = errors.New("node is not connected")
+	ErrCommandTimeout = errors.New("command timed out")
 )
 
 // resultTimeout bounds ordinary commands; long-running ones get more.
 const (
-	resultTimeout   = 45 * time.Second
-	stopTimeout     = 3 * time.Minute
-	installTimeout  = 30 * time.Minute
+	resultTimeout  = 45 * time.Second
+	stopTimeout    = 3 * time.Minute
+	installTimeout = 30 * time.Minute
 )
 
 func timeoutFor(cmd *nodesv1.Command) time.Duration {
