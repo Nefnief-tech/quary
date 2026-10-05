@@ -60,7 +60,7 @@ func ImageForJava(javaVersion int) string {
 	return fmt.Sprintf("eclipse-temurin:%d-jre-noble", javaVersion)
 }
 
-var mcVersionRe = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.(\d+))?$`)
+var mcVersionRe = regexp.MustCompile(`^(\d+)(?:\.(\d+))?(?:\.(\d+))?$`)
 
 // mcVersionKey parses "1.21.1" into comparable numbers (0 for missing parts).
 func mcVersionKey(mcVersion string) (major, minor, patch int, err error) {
