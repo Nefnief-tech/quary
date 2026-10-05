@@ -12,6 +12,24 @@ import (
 	"github.com/google/uuid"
 )
 
+const allocationServerCount = `-- name: AllocationServerCount :one
+SELECT count(*) FROM servers
+WHERE allocation_id = $1 AND id != $2
+`
+
+type AllocationServerCountParams struct {
+	AllocationID uuid.UUID `json:"allocation_id"`
+	ID           uuid.UUID `json:"id"`
+}
+
+// Free unless claimed by a server other than the caller's own.
+func (q *Queries) AllocationServerCount(ctx context.Context, arg AllocationServerCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, allocationServerCount, arg.AllocationID, arg.ID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAllocation = `-- name: CreateAllocation :one
 INSERT INTO allocations (id, node_id, ip, port)
 VALUES ($1, $2, $3, $4)
@@ -60,6 +78,24 @@ WHERE s.id = $1
 
 func (q *Queries) GetAllocationForServer(ctx context.Context, id uuid.UUID) (Allocation, error) {
 	row := q.db.QueryRow(ctx, getAllocationForServer, id)
+	var i Allocation
+	err := row.Scan(
+		&i.ID,
+		&i.NodeID,
+		&i.Ip,
+		&i.Port,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getAllocationForUpdate = `-- name: GetAllocationForUpdate :one
+SELECT id, node_id, ip, port, created_at FROM allocations WHERE id = $1 FOR UPDATE
+`
+
+// Row-lock an allocation for a settings-tab port move.
+func (q *Queries) GetAllocationForUpdate(ctx context.Context, id uuid.UUID) (Allocation, error) {
+	row := q.db.QueryRow(ctx, getAllocationForUpdate, id)
 	var i Allocation
 	err := row.Scan(
 		&i.ID,

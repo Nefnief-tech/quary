@@ -25,3 +25,12 @@ DELETE FROM allocations WHERE id = $1;
 SELECT a.* FROM allocations a
 JOIN servers s ON s.allocation_id = a.id
 WHERE s.id = $1;
+
+-- Row-lock an allocation for a settings-tab port move.
+-- name: GetAllocationForUpdate :one
+SELECT * FROM allocations WHERE id = $1 FOR UPDATE;
+
+-- Free unless claimed by a server other than the caller's own.
+-- name: AllocationServerCount :one
+SELECT count(*) FROM servers
+WHERE allocation_id = $1 AND id != $2;

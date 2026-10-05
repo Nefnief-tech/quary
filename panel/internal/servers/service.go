@@ -336,6 +336,125 @@ func (s *Service) handleStatus(serverID uuid.UUID, change *nodesv1.StatusChange)
 	}
 }
 
+// UpdateRequest is the settings-tab input. Zero values leave fields alone.
+type UpdateRequest struct {
+	Name       string     `json:"name"`
+	MemoryMB   int32      `json:"memory_mb"`
+	CPUPercent int32      `json:"cpu_percent"`
+	Allocation *uuid.UUID `json:"allocation_id"` // pointer: explicit null-free change
+}
+
+// Update applies visual-settings changes. Resource changes take effect on
+// the next start; a port move swaps the allocation atomically.
+func (s *Service) Update(ctx context.Context, sv gen.Server, req UpdateRequest) (gen.Server, []string, error) {
+	var notes []string
+
+	if req.Name != "" && req.Name != sv.Name {
+		if len(req.Name) > 64 {
+			return sv, nil, fmt.Errorf("name must be 1-64 characters")
+		}
+		if err := s.q.RenameServer(ctx, gen.RenameServerParams{ID: sv.ID, Name: req.Name}); err != nil {
+			return sv, nil, err
+		}
+		notes = append(notes, "renamed")
+		sv.Name = req.Name
+	}
+
+	if req.MemoryMB != 0 || req.CPUPercent != 0 {
+		mem := sv.MemoryMb
+		cpu := sv.CpuPercent
+		if req.MemoryMB != 0 {
+			if req.MemoryMB < 512 {
+				return sv, nil, fmt.Errorf("memory must be at least 512 MiB")
+			}
+			mem = req.MemoryMB
+		}
+		if req.CPUPercent != 0 {
+			if req.CPUPercent < 50 || req.CPUPercent > 3200 {
+				return sv, nil, fmt.Errorf("cpu percent must be between 50 and 3200")
+			}
+			cpu = req.CPUPercent
+		}
+		if err := s.q.SetServerResources(ctx, gen.SetServerResourcesParams{
+			ID: sv.ID, MemoryMb: mem, CpuPercent: cpu,
+		}); err != nil {
+			return sv, nil, err
+		}
+		// The -Xmx launch flags are baked into the install config; regenerate
+		// them so the new memory applies on the next start.
+		if mem != sv.MemoryMb {
+			runner, ok := s.catalog.Get(sv.Runner)
+			if ok {
+				var cfg Config
+				if err := json.Unmarshal(sv.Config, &cfg); err == nil {
+					cfg.Launch = runner.Launch(int(mem))
+					cfgRaw, _ := json.Marshal(cfg)
+					if err := s.q.UpdateServerConfig(ctx, gen.UpdateServerConfigParams{
+						ID: sv.ID, Config: cfgRaw,
+					}); err != nil {
+						return sv, nil, err
+					}
+				}
+			}
+			notes = append(notes, "resources updated — applies after restart")
+		} else {
+			notes = append(notes, "resources updated")
+		}
+		sv.MemoryMb = mem
+		sv.CpuPercent = cpu
+	}
+
+	if req.Allocation != nil && *req.Allocation != sv.AllocationID {
+		if lifecycle.Status(sv.Status) == lifecycle.Running || lifecycle.Status(sv.Status) == lifecycle.Starting {
+			return sv, nil, fmt.Errorf("%w: stop the server before moving its port", ErrBadState)
+		}
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return sv, nil, err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		qtx := s.q.WithTx(tx)
+		// Claim the new allocation first (free + unclaimed under lock).
+		newAlloc, err := qtx.GetAllocationForUpdate(ctx, *req.Allocation)
+		if err != nil {
+			return sv, nil, fmt.Errorf("allocation not found")
+		}
+		assigned, err := qtx.AllocationServerCount(ctx, gen.AllocationServerCountParams{
+			AllocationID: *req.Allocation, ID: sv.ID,
+		})
+		if err != nil {
+			return sv, nil, err
+		}
+		if assigned != 0 {
+			return sv, nil, fmt.Errorf("%w: allocation already in use", ErrNoAllocations)
+		}
+		if err := qtx.SetServerAllocation(ctx, gen.SetServerAllocationParams{
+			ID: sv.ID, AllocationID: *req.Allocation,
+		}); err != nil {
+			return sv, nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return sv, nil, err
+		}
+		// Keep the install-config bind port in sync for the next start.
+		var cfg Config
+		if err := json.Unmarshal(sv.Config, &cfg); err == nil {
+			cfg.BindIP = newAlloc.Ip
+			cfg.BindPort = newAlloc.Port
+			cfgRaw, _ := json.Marshal(cfg)
+			_ = s.q.UpdateServerConfig(ctx, gen.UpdateServerConfigParams{ID: sv.ID, Config: cfgRaw})
+		}
+		notes = append(notes, fmt.Sprintf("port moved to %s:%d — applies after restart", newAlloc.Ip, newAlloc.Port))
+		sv.AllocationID = *req.Allocation
+	}
+
+	updated, err := s.q.GetServer(ctx, sv.ID)
+	if err != nil {
+		return sv, notes, err
+	}
+	return updated, notes, nil
+}
+
 // Delete removes a server and wipes its data directory on the node.
 // Installing servers can be deleted too: nothing is running yet, and a late
 // install result is ignored once the row is gone.

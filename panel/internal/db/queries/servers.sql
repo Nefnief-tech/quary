@@ -16,6 +16,15 @@ SELECT * FROM servers WHERE owner_id = $1 ORDER BY created_at;
 -- name: SetServerStatus :exec
 UPDATE servers SET status = $2, updated_at = now() WHERE id = $1;
 
+-- name: RenameServer :exec
+UPDATE servers SET name = $2, updated_at = now() WHERE id = $1;
+
+-- name: SetServerResources :exec
+UPDATE servers SET memory_mb = $2, cpu_percent = $3, updated_at = now() WHERE id = $1;
+
+-- name: SetServerAllocation :exec
+UPDATE servers SET allocation_id = $2, updated_at = now() WHERE id = $1;
+
 -- name: UpdateServerConfig :exec
 UPDATE servers SET config = $2, updated_at = now() WHERE id = $1;
 

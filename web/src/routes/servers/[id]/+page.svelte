@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, type Server } from '$lib/api';
 
 	let server = $state<Server | null>(null);
 	let error = $state('');
-	let tab = $state<'console' | 'files' | 'plugins'>('console');
+	let tab = $state<'console' | 'files' | 'plugins' | 'settings'>('console');
 
 	let consoleEl: HTMLDivElement | null = $state(null);
 	let inputLine = $state('');
@@ -85,6 +86,73 @@
 	function openPlugins() {
 		tab = 'plugins';
 		loadPlugins();
+	}
+
+	// settings state
+	let settings = $state({ name: '', memory_mb: 0, cpu_percent: 0 });
+	let settingsBusy = $state(false);
+	let settingsNotes = $state<string[]>([]);
+	let allocs = $state<{ id: string; ip: string; port: number; in_use_by: string | null; is_current: boolean }[]>([]);
+	let movingTo = $state('');
+
+	async function openSettings() {
+		tab = 'settings';
+		if (server) {
+			settings = { name: server.name, memory_mb: server.memory_mb, cpu_percent: server.cpu_percent };
+		}
+		try {
+			allocs = await api.get<typeof allocs>(`/api/v1/servers/${id}/allocations`);
+		} catch {
+			allocs = [];
+		}
+	}
+
+	async function saveSettings(e: SubmitEvent) {
+		e.preventDefault();
+		settingsBusy = true;
+		error = '';
+		try {
+			const res = await api.patch<{
+				notes: string[];
+				name: string;
+				memory_mb: number;
+				cpu_percent: number;
+				status: string;
+			}>(`/api/v1/servers/${id}`, {
+				name: settings.name,
+				memory_mb: Number(settings.memory_mb),
+				cpu_percent: Number(settings.cpu_percent)
+			});
+			server = { ...server!, name: res.name, memory_mb: res.memory_mb, cpu_percent: res.cpu_percent };
+			settingsNotes = res.notes;
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			settingsBusy = false;
+		}
+	}
+
+	async function movePort(allocId: string, ip: string, port: number) {
+		if (!confirm(`Move this server to ${ip}:${port}? The server must be restarted afterwards.`)) return;
+		error = '';
+		try {
+			const res = await api.patch<{ notes: string[] }>(`/api/v1/servers/${id}`, { allocation_id: allocId });
+			settingsNotes = res.notes;
+			if (server) server = { ...server, ip, port };
+			await openSettings();
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	async function deleteServer() {
+		if (!confirm(`Delete ${server?.name} and wipe its data? This cannot be undone.`)) return;
+		try {
+			await api.del(`/api/v1/servers/${id}`);
+			goto('/');
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		}
 	}
 
 	const id = $derived(page.params.id ?? '');
@@ -396,6 +464,12 @@
 				Plugins
 			</button>
 		{/if}
+		<button
+			class={`rounded-lg px-4 py-2 font-medium transition ${tab === 'settings' ? 'bg-slate-800 text-slate-100 ring-1 ring-slate-700' : 'text-slate-400 hover:text-slate-200'}`}
+			onclick={openSettings}
+		>
+			Settings
+		</button>
 		{#if tab === 'console'}
 			<span class="ml-auto flex items-center gap-2 text-xs text-slate-500">
 				<span
@@ -510,7 +584,7 @@
 				{/if}
 			</div>
 		</div>
-	{:else}
+	{:else if tab === 'plugins'}
 		<div class="space-y-6">
 			<form onsubmit={searchPlugins} class="flex gap-2">
 				<input
@@ -578,6 +652,104 @@
 						</p>
 					{/each}
 				</div>
+			</div>
+		</div>
+	{:else}
+		<div class="space-y-6">
+			{#if settingsNotes.length}
+				<p class="rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
+					{settingsNotes.join(' · ')}
+				</p>
+			{/if}
+
+			<form onsubmit={saveSettings} class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+				<h3 class="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">General</h3>
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+					<label class="block">
+						<span class="mb-1.5 block text-sm font-medium text-slate-400">Name</span>
+						<input
+							class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+							bind:value={settings.name}
+							required
+						/>
+					</label>
+					<label class="block">
+						<span class="mb-1.5 block text-sm font-medium text-slate-400">Memory (MiB)</span>
+						<input
+							type="number"
+							min="512"
+							step="512"
+							class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+							bind:value={settings.memory_mb}
+						/>
+					</label>
+					<label class="block">
+						<span class="mb-1.5 block text-sm font-medium text-slate-400">CPU (100 = one core)</span>
+						<input
+							type="number"
+							min="50"
+							max="3200"
+							step="50"
+							class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+							bind:value={settings.cpu_percent}
+						/>
+					</label>
+				</div>
+				<div class="mt-4 flex items-center gap-4">
+					<button
+						type="submit"
+						disabled={settingsBusy}
+						class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+					>
+						{settingsBusy ? 'Saving…' : 'Save changes'}
+					</button>
+					<p class="text-xs text-slate-600">Memory and CPU changes apply on the next start.</p>
+				</div>
+			</form>
+
+			<div class="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-slate-500">Network</h3>
+				<p class="mb-3 text-xs text-slate-600">
+					Current address: <span class="font-mono text-slate-400">{server.ip}:{server.port}</span>.
+					Move the server to any free allocation (stop the server first).
+				</p>
+				<ul class="grid grid-cols-1 gap-2 md:grid-cols-3">
+					{#each allocs as a (a.id)}
+						<div
+							class={`flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-sm ${a.is_current ? 'border-emerald-700/60 bg-emerald-950/20 text-emerald-300' : a.in_use_by ? 'border-slate-800 bg-slate-950/60 text-slate-600' : 'border-slate-800 bg-slate-950 text-slate-300'}`}
+						>
+							<span>{a.ip}:{a.port}</span>
+							{#if a.is_current}
+								<span class="ml-auto text-[10px] uppercase tracking-wide">current</span>
+							{:else if a.in_use_by}
+								<span class="ml-auto text-[10px] uppercase tracking-wide">in use</span>
+							{:else}
+								<button
+									class="ml-auto rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-200 transition hover:bg-slate-700"
+									onclick={() => movePort(a.id, a.ip, a.port)}>move here</button
+								>
+							{/if}
+						</div>
+					{:else}
+						<p class="text-sm text-slate-500">
+							No allocations on this node — add a range in the Admin area.
+						</p>
+					{/each}
+				</ul>
+			</div>
+
+			<div class="rounded-xl border border-rose-900/50 bg-rose-950/20 p-5">
+				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-rose-400">Danger zone</h3>
+				<p class="mb-3 text-xs text-slate-500">
+					Deleting removes the server and wipes its worlds and files from the node.
+				</p>
+				<button
+					class="rounded-lg bg-rose-700/80 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:opacity-40"
+					disabled={['running', 'starting', 'stopping'].includes(server.status)}
+					onclick={deleteServer}
+				>
+					Delete server
+				</button>
 			</div>
 		</div>
 	{/if}

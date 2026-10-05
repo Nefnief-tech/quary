@@ -181,6 +181,49 @@ func (q *Queries) ListServersByOwner(ctx context.Context, ownerID uuid.UUID) ([]
 	return items, nil
 }
 
+const renameServer = `-- name: RenameServer :exec
+UPDATE servers SET name = $2, updated_at = now() WHERE id = $1
+`
+
+type RenameServerParams struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+func (q *Queries) RenameServer(ctx context.Context, arg RenameServerParams) error {
+	_, err := q.db.Exec(ctx, renameServer, arg.ID, arg.Name)
+	return err
+}
+
+const setServerAllocation = `-- name: SetServerAllocation :exec
+UPDATE servers SET allocation_id = $2, updated_at = now() WHERE id = $1
+`
+
+type SetServerAllocationParams struct {
+	ID           uuid.UUID `json:"id"`
+	AllocationID uuid.UUID `json:"allocation_id"`
+}
+
+func (q *Queries) SetServerAllocation(ctx context.Context, arg SetServerAllocationParams) error {
+	_, err := q.db.Exec(ctx, setServerAllocation, arg.ID, arg.AllocationID)
+	return err
+}
+
+const setServerResources = `-- name: SetServerResources :exec
+UPDATE servers SET memory_mb = $2, cpu_percent = $3, updated_at = now() WHERE id = $1
+`
+
+type SetServerResourcesParams struct {
+	ID         uuid.UUID `json:"id"`
+	MemoryMb   int32     `json:"memory_mb"`
+	CpuPercent int32     `json:"cpu_percent"`
+}
+
+func (q *Queries) SetServerResources(ctx context.Context, arg SetServerResourcesParams) error {
+	_, err := q.db.Exec(ctx, setServerResources, arg.ID, arg.MemoryMb, arg.CpuPercent)
+	return err
+}
+
 const setServerStatus = `-- name: SetServerStatus :exec
 UPDATE servers SET status = $2, updated_at = now() WHERE id = $1
 `

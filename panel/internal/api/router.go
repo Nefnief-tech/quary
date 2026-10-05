@@ -52,6 +52,8 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("GET /api/v1/servers", s.requireAuth(http.HandlerFunc(s.listServers)))
 	mux.Handle("POST /api/v1/servers", s.requirePerm("server.create", http.HandlerFunc(s.createServer)))
 	mux.Handle("GET /api/v1/servers/{id}", s.requireAuth(http.HandlerFunc(s.getServer)))
+	mux.Handle("PATCH /api/v1/servers/{id}", s.requireAuth(http.HandlerFunc(s.updateServer)))
+	mux.Handle("GET /api/v1/servers/{id}/allocations", s.requireAuth(http.HandlerFunc(s.serverAllocations)))
 	mux.Handle("DELETE /api/v1/servers/{id}", s.requireAuth(http.HandlerFunc(s.deleteServer)))
 	mux.Handle("POST /api/v1/servers/{id}/power", s.requirePerm("server.power", http.HandlerFunc(s.powerServer)))
 	mux.Handle("GET /api/v1/servers/{id}/console/token", s.requirePerm("console.read", http.HandlerFunc(s.consoleToken)))
