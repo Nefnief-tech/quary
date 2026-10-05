@@ -40,7 +40,7 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 // leaves the goose state in the database.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	sqldb := stdlib.OpenDBFromPool(pool)
-	defer sqldb.Close()
+	defer func() { _ = sqldb.Close() }()
 	provider, err := goose.NewProvider(goose.DialectPostgres, sqldb, migrations.FS)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)
@@ -54,7 +54,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 // MigrateDown rolls back all migrations (used by tests and disaster recovery).
 func MigrateDown(ctx context.Context, pool *pgxpool.Pool) error {
 	sqldb := stdlib.OpenDBFromPool(pool)
-	defer sqldb.Close()
+	defer func() { _ = sqldb.Close() }()
 	provider, err := goose.NewProvider(goose.DialectPostgres, sqldb, migrations.FS)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)

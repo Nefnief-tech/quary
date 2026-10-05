@@ -40,7 +40,7 @@ func nodeStatus(lastSeen *time.Time) string {
 	return "offline"
 }
 
-func (s *Server) nodeResponse(ctx context.Context, n gen.Node) (nodeResponse, error) {
+func (s *Server) nodeResponse(ctx context.Context, n gen.Node) nodeResponse {
 	resp := nodeResponse{
 		ID: n.ID, Name: n.Name, Description: n.Description,
 		Status:        nodeStatus(n.LastSeenAt),
@@ -48,11 +48,10 @@ func (s *Server) nodeResponse(ctx context.Context, n gen.Node) (nodeResponse, er
 		DockerVersion: n.DockerVersion, OS: n.Os, Arch: n.Arch,
 		LastSeenAt: n.LastSeenAt, CreatedAt: n.CreatedAt,
 	}
-	exists, err := s.q.NodeTokenExists(ctx, n.ID)
-	if err == nil && exists > 0 {
+	if exists, err := s.q.NodeTokenExists(ctx, n.ID); err == nil && exists > 0 {
 		resp.HasActiveToken = true
 	}
-	return resp, nil
+	return resp
 }
 
 type createNodeRequest struct {
@@ -91,11 +90,7 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		IP: clientIP(r), Metadata: map[string]any{"name": node.Name},
 	})
 
-	resp, err := s.nodeResponse(ctx, node)
-	if err != nil {
-		apiError(w, http.StatusInternalServerError, "database error")
-		return
-	}
+	resp := s.nodeResponse(ctx, node)
 	resp.HasActiveToken = true
 	out := struct {
 		nodeResponse
@@ -119,12 +114,7 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]nodeResponse, 0, len(nodes))
 	for _, n := range nodes {
-		resp, err := s.nodeResponse(r.Context(), n)
-		if err != nil {
-			apiError(w, http.StatusInternalServerError, "database error")
-			return
-		}
-		out = append(out, resp)
+		out = append(out, s.nodeResponse(r.Context(), n))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -140,12 +130,7 @@ func (s *Server) getNode(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusNotFound, "node not found")
 		return
 	}
-	resp, err := s.nodeResponse(r.Context(), node)
-	if err != nil {
-		apiError(w, http.StatusInternalServerError, "database error")
-		return
-	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, s.nodeResponse(r.Context(), node))
 }
 
 func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {

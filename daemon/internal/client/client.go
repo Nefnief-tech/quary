@@ -81,15 +81,13 @@ func (c *Client) runOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("dial panel: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	api := nodesv1.NewNodeAgentServiceClient(conn)
 
 	if id == nil || len(id.CertPEM) == 0 {
-		newID, enrollErr := c.enroll(ctx, api)
-		if enrollErr != nil {
+		if _, enrollErr := c.enroll(ctx, api); enrollErr != nil {
 			return enrollErr
 		}
-		id = newID
 		// Redial so the new client certificate is presented.
 		return errReenrolled
 	}
