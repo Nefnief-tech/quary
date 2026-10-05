@@ -31,6 +31,11 @@ proto: ## Regenerate protobuf/gRPC code
 	cd proto && buf generate
 
 dev: ## Bring up the dev stack (postgres + panel + daemon)
+	@if [ ! -f deploy/.env ]; then \
+		passwd=$$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'); \
+		printf 'POSTGRES_DB=quarry\nPOSTGRES_USER=quarry\nPOSTGRES_PASSWORD=%s\nQUARRY_ENROLLMENT_TOKEN=\n' "$$passwd" > deploy/.env; \
+		echo "generated deploy/.env with a random database password"; \
+	fi
 	docker compose --env-file deploy/.env -f deploy/docker-compose.dev.yml up --build
 
 down: ## Tear down the dev stack
