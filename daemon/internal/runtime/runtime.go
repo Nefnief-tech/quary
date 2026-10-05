@@ -22,7 +22,7 @@ type ServerSpec struct {
 	Image      string
 	Launch     []string
 	MemoryMB   int
-	CPUPercent int   // 100 = one full core
+	CPUPercent int // 100 = one full core
 	BindIP     string
 	BindPort   int
 }

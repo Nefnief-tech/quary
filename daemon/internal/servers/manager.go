@@ -20,9 +20,9 @@ import (
 
 	"github.com/google/uuid"
 
-	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
-	"quarry.dev/quarry/internal/ssrf"
 	"quarry.dev/quarry/daemon/internal/runtime"
+	"quarry.dev/quarry/internal/ssrf"
+	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
 // Emitter sends events upstream (wired to the Channel stream by the client).
@@ -395,11 +395,8 @@ func (m *Manager) Stop(ctx context.Context, cmd *nodesv1.StopServer, emit Emitte
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// Escalate.
-	p.mu.Lock()
-	_ = p.expectedStop
-	p.mu.Unlock()
-	_ = m.rt.Stop(ctx, serverID, 10*time.Second)
+	// Escalate: SIGTERM with a short docker-side timeout, then remove.
+	_ = m.rt.Stop(ctx, serverID, 3*time.Second)
 	_ = m.rt.Remove(ctx, serverID)
 	m.drop(serverID)
 	if p.cancelStats != nil {

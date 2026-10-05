@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/netip"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/google/uuid"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
@@ -42,12 +42,9 @@ func containerName(id uuid.UUID) string {
 	return "quarry-server-" + id.String()
 }
 
-// notFound matches the client's objectNotFoundError.
-type notFound interface{ NotFound() }
-
+// isNotFound reports whether err is a daemon "object not found" error.
 func isNotFound(err error) bool {
-	var nf notFound
-	return errors.As(err, &nf)
+	return cerrdefs.IsNotFound(err)
 }
 
 func (d *Docker) EnsureImage(ctx context.Context, ref string) error {
