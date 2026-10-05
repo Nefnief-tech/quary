@@ -25,7 +25,15 @@
 	let plugins = $state<{ name: string; size: number }[]>([]);
 	let pluginQuery = $state('');
 	let pluginResults = $state<
-		{ project_id: string; title: string; author: string; description: string; downloads: number }[]
+		{
+			project_id: string;
+			slug: string;
+			title: string;
+			author: string;
+			description: string;
+			downloads: number;
+			icon_url: string;
+		}[]
 	>([]);
 	let pluginSearchBusy = $state(false);
 	let pluginSearchDone = $state(false);
@@ -54,7 +62,7 @@
 			pluginResults = res.hits;
 			pluginSearchDone = true;
 		} catch (err) {
-			error = err instanceof Error ? err.message : String(err);
+			pluginNote = err instanceof Error ? err.message : String(err);
 		} finally {
 			pluginSearchBusy = false;
 		}
@@ -85,7 +93,7 @@
 
 	function openPlugins() {
 		tab = 'plugins';
-		loadPlugins();
+		if (!pluginSearchDone) loadPlugins();
 	}
 
 	// settings state
@@ -169,7 +177,7 @@
 		starting: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
 		stopping: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
 		installing: 'bg-sky-500/15 text-sky-300 ring-sky-500/30',
-		offline: 'bg-slate-500/15 text-slate-400 ring-slate-500/30',
+		offline: 'bg-zinc-500/15 text-zinc-400 ring-zinc-500/30',
 		crashed: 'bg-rose-500/15 text-rose-300 ring-rose-500/30',
 		suspended: 'bg-rose-500/15 text-rose-300 ring-rose-500/30'
 	};
@@ -283,9 +291,9 @@
 				`/api/v1/servers/${id}/console/token`
 			);
 			for (const line of t.scrollback ?? []) term.writeln(line);
-			term.writeln('— connected —');
+			term.writeln('connected');
 		} catch (e) {
-			term.writeln('— connected (history unavailable: ' + String(e).slice(0, 60) + ') —');
+			term.writeln('connected (history unavailable: ' + String(e).slice(0, 60) + ')');
 		}
 	}
 
@@ -310,7 +318,7 @@
 				wsRetry = 0;
 				// Fresh connection: replay the hub's scrollback once.
 				term?.writeln('');
-				term?.writeln(`— connected —`);
+				term?.writeln('connected');
 				for (const line of t.scrollback ?? []) term?.writeln(line);
 			};
 			sock.onclose = () => {
@@ -358,7 +366,7 @@
 		e.preventDefault();
 		if (!inputLine) return;
 		if (!ws || ws.readyState !== WebSocket.OPEN) {
-			error = 'console is not connected — retrying automatically…';
+			error = 'console is not connected, retrying automatically';
 			scheduleReconnect();
 			return;
 		}
@@ -373,66 +381,73 @@
 </script>
 
 <svelte:head>
-	<title>{server?.name ?? 'Server'} — Quarry</title>
+	<title>{server?.name ?? "Server"} - Quarry</title>
 </svelte:head>
 
 {#if server}
-	<div class="mb-6 flex flex-wrap items-center gap-3.5">
-		<a href="/" class="text-sm text-slate-600 transition hover:text-slate-300">← Servers</a>
-		<h1 class="text-3xl font-bold tracking-tight text-white">{server.name}</h1>
+	<div class="mb-6 flex flex-wrap items-center gap-3">
+		<a href="/" class="text-sm text-zinc-600 transition hover:text-zinc-300">Servers</a>
+		<span class="text-zinc-700">/</span>
+		<h1 class="text-xl font-semibold tracking-tight text-zinc-50">{server.name}</h1>
 		<span class={`badge ring-1 ${statusStyle[server.status] ?? statusStyle.offline}`}>
+			{#if server.status === 'running'}
+				<span class="status-dot">
+					<span class="absolute inset-0 rounded-full bg-emerald-400/40" style="animation: status-ping 2s cubic-bezier(0,0,0.2,1) infinite;"></span>
+					<span class="relative h-2 w-2 rounded-full bg-emerald-400"></span>
+				</span>
+			{/if}
 			{server.status}
 		</span>
-		{#if statusDetail}<span class="text-xs text-slate-500">{statusDetail}</span>{/if}
+		{#if statusDetail}<span class="text-xs text-zinc-600">{statusDetail}</span>{/if}
 		<span class="chip ml-auto">{server.ip}:{server.port}</span>
 	</div>
 
 	<!-- Power + stats row -->
-	<div class="mb-7 grid grid-cols-1 gap-4 md:grid-cols-3">
-		<div class="card flex flex-wrap items-center gap-2 p-4">
+	<div class="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+		<div class="card flex flex-wrap items-center gap-2 p-3">
 			<button
 				class="btn btn-primary"
 				disabled={!['offline', 'crashed'].includes(server.status)}
-				onclick={() => power('start')}>▶ Start</button
+				onclick={() => power('start')}><i class="ph ph-play"></i>Start</button
 			>
 			<button
-				class="btn btn-secondary !text-amber-300"
+				class="btn btn-secondary"
 				disabled={!['running', 'starting', 'stopping'].includes(server.status)}
-				onclick={() => power('stop')}>■ Stop</button
+				onclick={() => power('stop')}><i class="ph ph-stop"></i>Stop</button
 			>
 			<button
 				class="btn btn-secondary"
 				disabled={!['running', 'crashed'].includes(server.status)}
-				onclick={() => power('restart')}>⟳ Restart</button
+				onclick={() => power('restart')}><i class="ph ph-arrows-clockwise"></i>Restart</button
 			>
 			<button
 				class="btn btn-danger"
 				disabled={!['running', 'starting', 'stopping', 'crashed'].includes(server.status)}
-				onclick={() => power('kill')}>✕ Kill</button
+				onclick={() => power('kill')}><i class="ph ph-x"></i>Kill</button
 			>
 		</div>
-		<div class="card p-4">
-			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-slate-500">
-				<span>CPU</span><span class="text-slate-300">{stats ? stats.cpu_percent.toFixed(1) : '–'}%</span>
+		<div class="card p-3">
+			<div class="flex items-center justify-between text-xs text-zinc-500">
+				<span>CPU</span><span class="mono text-zinc-300">{stats ? stats.cpu_percent.toFixed(1) : '–'}%</span>
 			</div>
-			<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+			<div class="mt-2.5 h-1 overflow-hidden rounded-full bg-zinc-800">
 				<div
-					class="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
+					class="h-full rounded-full bg-emerald-400 transition-all duration-500"
 					style="width: {cpuPct}%"
 				></div>
 			</div>
 		</div>
-		<div class="card p-4">
-			<div class="flex items-center justify-between text-xs font-medium uppercase tracking-wider text-slate-500">
+		<div class="card p-3">
+			<div class="flex items-center justify-between text-xs text-zinc-500">
 				<span>Memory</span>
-				<span class="text-slate-300">
+				<span class="mono text-zinc-300">
 					{stats ? stats.memory_used_mb.toFixed(0) : '–'} /
 					{stats ? stats.memory_limit_mb.toFixed(0) : '–'} MiB
 				</span>
 			</div>
-			<div class="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+			<div class="mt-2.5 h-1 overflow-hidden rounded-full bg-zinc-800">
 				<div
-					class="h-full rounded-full bg-gradient-to-r from-sky-600 to-sky-400 transition-all duration-500"
+					class="h-full rounded-full bg-sky-400 transition-all duration-500"
 					style="width: {memPct}%"
 				></div>
 			</div>
@@ -463,7 +478,7 @@
 			</button>
 		</div>
 		{#if tab === 'console'}
-			<span class="ml-auto flex items-center gap-2 text-xs text-slate-500">
+			<span class="ml-auto flex items-center gap-2 text-xs text-zinc-500">
 				<span
 					class={`h-2 w-2 rounded-full ${wsState === 'live' ? 'animate-pulse bg-emerald-400' : wsState === 'connecting' ? 'animate-pulse bg-amber-400' : 'bg-rose-500'}`}
 				></span>
@@ -479,11 +494,11 @@
 	{#if tab === 'console'}
 		<div class="card overflow-hidden">
 			<div class="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-2">
-				<span class="text-[11px] font-semibold uppercase tracking-widest text-slate-500">
-					{server.name} — console
+				<span class="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+					{server.name}: console
 				</span>
 				<button
-					class="rounded px-2 py-0.5 text-[11px] text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+					class="rounded px-2 py-0.5 text-[11px] text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300"
 					onclick={() => clearConsole()}
 				>
 					clear
@@ -494,18 +509,18 @@
 				onsubmit={sendLine}
 				class="flex items-center gap-2 border-t border-white/5 bg-white/[0.02] px-4 py-2.5"
 			>
-				<span class="font-mono text-sm {wsState === 'live' ? 'text-emerald-400' : 'text-slate-600'}">$</span>
+				<span class="font-mono text-sm {wsState === 'live' ? 'text-emerald-400' : 'text-zinc-600'}">$</span>
 				<input
-					class="flex-1 bg-transparent font-mono text-sm text-slate-100 outline-none placeholder:text-slate-600"
+					class="flex-1 bg-transparent font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
 					placeholder={wsState === 'live'
-						? 'type a server command — e.g. list, say hello, time set day'
+						? 'type a server command, e.g. list or say hello'
 						: 'console reconnecting…'}
 					bind:value={inputLine}
 				/>
 				<button
 					type="submit"
 					disabled={wsState !== 'live' || !inputLine}
-					class="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+					class="rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
 				>
 					Send ⏎
 				</button>
@@ -515,16 +530,16 @@
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<div class="card p-5">
 				<div class="mb-2 flex items-center gap-2 text-sm">
-					<button class="text-slate-400 transition hover:text-slate-200" onclick={() => loadFiles('')}>
+					<button class="text-zinc-400 transition hover:text-zinc-200" onclick={() => loadFiles('')}>
 						root
 					</button>
 					{#if filePath}
-						<span class="font-mono text-slate-300">/{filePath}</span>
+						<span class="font-mono text-zinc-300">/{filePath}</span>
 					{/if}
 				</div>
 				<ul class="max-h-96 overflow-y-auto font-mono text-sm">
 					{#each files as f (f.name)}
-						<li class="group flex items-center gap-2 border-b border-slate-800/50 py-1.5">
+						<li class="group flex items-center gap-2 border-b border-zinc-800/50 py-1.5">
 							{#if f.is_dir}
 								<button
 									class="text-sky-300 transition hover:underline"
@@ -534,110 +549,184 @@
 								</button>
 							{:else}
 								<button
-									class="text-slate-200 transition hover:text-emerald-300 hover:underline"
+									class="text-zinc-200 transition hover:text-emerald-300 hover:underline"
 									onclick={() => openFile(f.name)}
 								>
 									{f.name}
 								</button>
 							{/if}
-							<span class="ml-auto text-xs text-slate-600">{f.size} B</span>
+							<span class="ml-auto text-xs text-zinc-600">{f.size} B</span>
 							<button
 								class="text-xs text-rose-400/70 opacity-0 transition group-hover:opacity-100 hover:text-rose-300"
 								onclick={() => deleteFile(f.name, f.is_dir)}>del</button
 							>
 						</li>
 					{:else}
-						<li class="py-1.5 text-slate-500">empty directory</li>
+						<li class="py-1.5 text-zinc-500">empty directory</li>
 					{/each}
 				</ul>
 			</div>
 			<div class="card p-5">
 				{#if fileEditing}
 					<div class="mb-2 flex items-center gap-2 text-sm">
-						<span class="font-mono text-slate-300">{fileEditing}</span>
+						<span class="font-mono text-zinc-300">{fileEditing}</span>
 						<button class="btn btn-primary ml-auto px-3 py-1.5 text-xs" onclick={saveFile}>Save</button>
 						<button
-							class="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500"
+							class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500"
 							onclick={() => (fileEditing = '')}>Close</button
 						>
 					</div>
 					<textarea
-						class="h-80 w-full rounded-lg border border-slate-700/80 bg-slate-950 p-3 font-mono text-xs text-slate-100 outline-none focus:border-emerald-500"
+						class="h-80 w-full rounded-lg border border-zinc-700/80 bg-zinc-950 p-3 font-mono text-xs text-zinc-100 outline-none focus:border-emerald-500"
 						bind:value={fileContent}
 						spellcheck="false"
 					></textarea>
 				{:else}
-					<p class="text-sm text-slate-500">Select a file to view or edit it.</p>
+					<p class="text-sm text-zinc-500">Select a file to view or edit it.</p>
 				{/if}
 			</div>
 		</div>
 	{:else if tab === 'plugins'}
-		<div class="space-y-6">
-			<form onsubmit={searchPlugins} class="flex gap-2">
-				<input
-					class="flex-1 rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500"
-					placeholder="Search Modrinth for {server.mc_version} plugins…"
-					bind:value={pluginQuery}
-				/>
-				<button
-					type="submit"
-					disabled={pluginSearchBusy}
-					class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
-				>
-					{pluginSearchBusy ? '…' : 'Search'}
-				</button>
-			</form>
+		<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+			<!-- Explorer: search + results -->
+			<div class="space-y-4 lg:col-span-2">
+				<form onsubmit={searchPlugins} class="flex gap-2">
+					<div class="relative flex-1">
+						<i class="ph ph-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"></i>
+						<input
+							class="input pl-9"
+							placeholder={`Search Modrinth for ${server.mc_version} plugins`}
+							bind:value={pluginQuery}
+						/>
+					</div>
+					<button type="submit" disabled={pluginSearchBusy} class="btn btn-primary">
+						{pluginSearchBusy ? 'Searching' : 'Search'}
+					</button>
+				</form>
 
-			{#if pluginNote}
-				<p class="rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
-					{pluginNote}
-				</p>
-			{/if}
+				{#if pluginNote}
+					<p class="rounded-md border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-sm text-emerald-300">
+						{pluginNote}
+					</p>
+				{/if}
 
-			{#if pluginSearchDone}
-				<div class="card">
-					{#each pluginResults as hit (hit.project_id)}
-						<div class="flex items-center gap-3 border-b border-slate-800/60 p-4 last:border-0">
-							<div class="min-w-0 flex-1">
-								<p class="truncate font-medium text-slate-100">{hit.title}</p>
-								<p class="truncate text-xs text-slate-500">
-									{hit.author} · {hit.downloads.toLocaleString()} downloads — {hit.description}
+				{#if pluginSearchBusy}
+					<div class="space-y-3">
+						{#each Array(4) as _, i (i)}
+							<div class="card flex animate-pulse gap-4 p-4">
+								<div class="h-12 w-12 shrink-0 rounded-lg bg-zinc-800"></div>
+								<div class="flex-1 space-y-2 py-1">
+									<div class="h-3 w-1/3 rounded bg-zinc-800"></div>
+									<div class="h-3 w-2/3 rounded bg-zinc-800/60"></div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{:else if pluginSearchDone}
+					{#if pluginResults.length}
+						<p class="text-xs text-zinc-600">
+							{pluginResults.length} results for {server.mc_version} ({server.runner})
+						</p>
+					{/if}
+					<div class="grid grid-cols-1 gap-3">
+						{#each pluginResults as hit (hit.project_id)}
+							<div class="card flex gap-4 p-4">
+								{#if hit.icon_url}
+									<img
+										src={hit.icon_url}
+										alt=""
+										class="h-12 w-12 shrink-0 rounded-lg border border-zinc-800 object-cover"
+									/>
+								{:else}
+									<div
+										class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-lg font-semibold text-zinc-500"
+									>
+										{hit.title.charAt(0).toUpperCase()}
+									</div>
+								{/if}
+								<div class="min-w-0 flex-1">
+									<div class="flex items-baseline gap-2">
+										<p class="truncate text-sm font-medium text-zinc-100">{hit.title}</p>
+										<span class="shrink-0 text-xs text-zinc-600">{hit.author}</span>
+									</div>
+									<p class="mt-0.5 line-clamp-2 text-sm leading-snug text-zinc-500">
+										{hit.description}
+									</p>
+									<p class="mono mt-1.5 text-xs text-zinc-600">
+										<i class="ph ph-download-simple"></i>
+										{hit.downloads.toLocaleString()}
+									</p>
+								</div>
+								<div class="flex shrink-0 flex-col items-end justify-center">
+									<button
+										class="btn btn-primary px-3 py-1.5 text-xs"
+										disabled={installingId === hit.project_id}
+										onclick={() => installPlugin(hit.project_id)}
+									>
+										{installingId === hit.project_id ? 'Installing' : 'Install'}
+									</button>
+									<a
+										href="https://modrinth.com/plugin/{hit.slug}"
+										target="_blank"
+										rel="noreferrer"
+										class="mt-1.5 text-[11px] text-zinc-600 transition hover:text-zinc-400"
+									>
+										Modrinth page
+									</a>
+								</div>
+							</div>
+						{:else}
+							<div class="card p-8 text-center">
+								<p class="text-sm text-zinc-400">
+									{pluginQuery ? `No results for "${pluginQuery}".` : 'Type above to search Modrinth.'}
+								</p>
+								<p class="mt-1 text-xs text-zinc-600">
+									Results are filtered to plugins that support {server.mc_version} on {server.runner}.
 								</p>
 							</div>
-							<button
-								class="btn btn-primary shrink-0 px-3 py-1.5 text-xs"
-								disabled={installingId === hit.project_id}
-								onclick={() => installPlugin(hit.project_id)}
-							>
-								{installingId === hit.project_id ? 'Installing…' : 'Install'}
-							</button>
-						</div>
-					{:else}
-						<p class="p-4 text-sm text-slate-500">No results.</p>
-					{/each}
-				</div>
-			{/if}
-
-			<div>
-				<h3 class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">
-					Installed ({plugins.length})
-				</h3>
-				<div class="card font-mono text-sm">
-					{#each plugins as p (p.name)}
-						<div class="group flex items-center gap-3 border-b border-slate-800/60 px-4 py-2.5 last:border-0">
-							<span class="text-slate-200">{p.name}</span>
-							<span class="ml-auto text-xs text-slate-600">{p.size} B</span>
-							<button
-								class="text-xs text-rose-400/70 transition hover:text-rose-300"
-								onclick={() => deletePlugin(p.name)}>remove</button
-							>
-						</div>
-					{:else}
-						<p class="px-4 py-3 text-slate-500">
-							Nothing installed yet. Search above — plugins land in the server's plugins directory;
-							restart the server to load them.
+						{/each}
+					</div>
+				{:else}
+					<div class="card p-8 text-center">
+						<i class="ph ph-squares-four mb-3 block text-2xl text-zinc-700"></i>
+						<p class="text-sm text-zinc-400">Browse and install plugins for this server.</p>
+						<p class="mt-1 text-xs text-zinc-600">
+							Search Modrinth. Results are filtered to {server.mc_version} on {server.runner}, installs
+							land in the plugins directory.
 						</p>
-					{/each}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Installed -->
+			<div>
+				<div class="card p-4">
+					<h3 class="mb-3 text-sm font-medium text-zinc-300">
+						Installed
+						<span class="ml-1 text-zinc-600">{plugins.length}</span>
+					</h3>
+					<ul class="space-y-1">
+						{#each plugins as p (p.name)}
+							<li class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-zinc-800/50">
+								<i class="ph ph-cube text-zinc-600"></i>
+								<span class="truncate font-mono text-xs text-zinc-300">{p.name}</span>
+								<button
+									class="ml-auto text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-rose-300"
+									onclick={() => deletePlugin(p.name)}
+									title="Remove"
+								>
+									<i class="ph ph-trash text-sm"></i>
+								</button>
+							</li>
+						{:else}
+							<li class="px-2 py-1.5 text-xs text-zinc-600">
+								Nothing installed yet.
+							</li>
+						{/each}
+					</ul>
+					<p class="mt-3 border-t border-zinc-800/60 pt-3 text-xs text-zinc-600">
+						Plugins load at server start. Restart to apply changes.
+					</p>
 				</div>
 			</div>
 		</div>
@@ -650,18 +739,18 @@
 			{/if}
 
 			<form onsubmit={saveSettings} class="card p-6">
-				<h3 class="mb-4 text-xs font-bold uppercase tracking-widest text-slate-500">General</h3>
+				<h3 class="mb-4 text-xs font-bold uppercase tracking-widest text-zinc-500">General</h3>
 				<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 					<label class="block">
-						<span class="mb-1.5 block text-sm font-medium text-slate-400">Name</span>
+						<span class="mb-1.5 block text-sm font-medium text-zinc-400">Name</span>
 						<input
-							class="w-full rounded-lg border border-slate-700/80 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-emerald-500"
+							class="w-full rounded-lg border border-zinc-700/80 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none focus:border-emerald-500"
 							bind:value={settings.name}
 							required
 						/>
 					</label>
 					<label class="block">
-						<span class="mb-1.5 block text-sm font-medium text-slate-400">Memory (MiB)</span>
+						<span class="mb-1.5 block text-sm font-medium text-zinc-400">Memory (MiB)</span>
 						<input
 							type="number"
 							min="512"
@@ -671,7 +760,7 @@
 						/>
 					</label>
 					<label class="block">
-						<span class="mb-1.5 block text-sm font-medium text-slate-400">CPU (100 = one core)</span>
+						<span class="mb-1.5 block text-sm font-medium text-zinc-400">CPU (100 = one core)</span>
 						<input
 							type="number"
 							min="50"
@@ -686,20 +775,20 @@
 					<button type="submit" disabled={settingsBusy} class="btn btn-primary">
 						{settingsBusy ? 'Saving…' : 'Save changes'}
 					</button>
-					<p class="text-xs text-slate-600">Memory and CPU changes apply on the next start.</p>
+					<p class="text-xs text-zinc-600">Memory and CPU changes apply on the next start.</p>
 				</div>
 			</form>
 
 			<div class="card p-6">
-				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-slate-500">Network</h3>
-				<p class="mb-3 text-xs text-slate-600">
-					Current address: <span class="font-mono text-slate-400">{server.ip}:{server.port}</span>.
+				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-zinc-500">Network</h3>
+				<p class="mb-3 text-xs text-zinc-600">
+					Current address: <span class="font-mono text-zinc-400">{server.ip}:{server.port}</span>.
 					Move the server to any free allocation (stop the server first).
 				</p>
 				<ul class="grid grid-cols-1 gap-2 md:grid-cols-3">
 					{#each allocs as a (a.id)}
 						<div
-							class={`flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-sm ${a.is_current ? 'border-emerald-700/60 bg-emerald-950/20 text-emerald-300' : a.in_use_by ? 'border-slate-800 bg-slate-950/60 text-slate-600' : 'border-slate-800 bg-slate-950 text-slate-300'}`}
+							class={`flex items-center gap-2 rounded-lg border px-3 py-2 font-mono text-sm ${a.is_current ? 'border-emerald-700/60 bg-emerald-950/20 text-emerald-300' : a.in_use_by ? 'border-zinc-800 bg-zinc-950/60 text-zinc-600' : 'border-zinc-800 bg-zinc-950 text-zinc-300'}`}
 						>
 							<span>{a.ip}:{a.port}</span>
 							{#if a.is_current}
@@ -708,13 +797,13 @@
 								<span class="ml-auto text-[10px] uppercase tracking-wide">in use</span>
 							{:else}
 								<button
-									class="ml-auto rounded bg-slate-800 px-2 py-0.5 text-[11px] text-slate-200 transition hover:bg-slate-700"
+									class="ml-auto rounded bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-200 transition hover:bg-zinc-700"
 									onclick={() => movePort(a.id, a.ip, a.port)}>move here</button
 								>
 							{/if}
 						</div>
 					{:else}
-						<p class="text-sm text-slate-500">
+						<p class="text-sm text-zinc-500">
 							No allocations on this node — add a range in the Admin area.
 						</p>
 					{/each}
@@ -723,7 +812,7 @@
 
 			<div class="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-6">
 				<h3 class="mb-1 text-xs font-bold uppercase tracking-widest text-rose-400">Danger zone</h3>
-				<p class="mb-3 text-xs text-slate-500">
+				<p class="mb-3 text-xs text-zinc-500">
 					Deleting removes the server and wipes its worlds and files from the node.
 				</p>
 				<button

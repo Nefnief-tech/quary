@@ -84,7 +84,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin — Quarry</title>
+	<title>Admin - Quarry</title>
 </svelte:head>
 
 <h1 class="mb-6 text-2xl font-bold tracking-tight text-slate-50">Admin</h1>
