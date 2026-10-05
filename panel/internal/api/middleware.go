@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"quarry.dev/quarry/internal/tokenx"
 	"quarry.dev/quarry/panel/internal/auth"
 	"quarry.dev/quarry/panel/internal/rbac"
 )
@@ -82,18 +81,15 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 
 		if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 			presented := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
-			if _, _, ok := tokenx.SplitPrefix(presented); ok && strings.HasPrefix(presented, auth.APIKeyPrefix+"_") {
-				row, err := s.keys.Resolve(r.Context(), presented)
-				if err == nil {
-					s.keys.Touch(r.Context(), row.ID)
-					id := &auth.Identity{
-						UserID:   row.UserID,
-						RoleName: "api-key",
-						Perms:    row.Scopes,
-					}
-					next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey, id)))
-					return
+			if row, err := s.keys.Resolve(r.Context(), presented); err == nil {
+				s.keys.Touch(r.Context(), row.ID)
+				id := &auth.Identity{
+					UserID:   row.UserID,
+					RoleName: "api-key",
+					Perms:    row.Scopes,
 				}
+				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey, id)))
+				return
 			}
 		}
 

@@ -16,6 +16,7 @@ import (
 	"quarry.dev/quarry/panel/internal/auth"
 	"quarry.dev/quarry/panel/internal/config"
 	"quarry.dev/quarry/panel/internal/db/gen"
+	"quarry.dev/quarry/panel/internal/nodes"
 )
 
 // Server wires the API's dependencies together.
@@ -27,6 +28,7 @@ type Server struct {
 	sessions *auth.Sessions
 	keys     *auth.APIKeys
 	auditLog *audit.Logger
+	nodeSvc  *nodes.Service
 	limiter  *auth.LoginLimiter
 }
 
@@ -37,6 +39,7 @@ func New(
 	sessions *auth.Sessions,
 	keys *auth.APIKeys,
 	auditLog *audit.Logger,
+	nodeSvc *nodes.Service,
 ) *Server {
 	return &Server{
 		cfg:      cfg,
@@ -46,6 +49,7 @@ func New(
 		sessions: sessions,
 		keys:     keys,
 		auditLog: auditLog,
+		nodeSvc:  nodeSvc,
 		limiter:  auth.NewLoginLimiter(15*time.Second, 5),
 	}
 }

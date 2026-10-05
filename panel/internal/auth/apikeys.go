@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,9 +13,10 @@ import (
 	"quarry.dev/quarry/panel/internal/db/gen"
 )
 
-// APIKeys manages scoped API keys. The full key ("qpk_<id-ish>_<secret>") is
-// returned once at creation; lookups go through the short prefix, then the
-// SHA-256 of the presented key is compared against the stored hash.
+// APIKeys manages scoped API keys. The full key is
+// "qpk_<lookup>.<secret>" — '.' separates because base64url never emits it.
+// The lookup part is stored in the database for O(1) lookup; only the
+// SHA-256 of the full key is stored.
 type APIKeys struct {
 	q *gen.Queries
 }
@@ -26,7 +28,7 @@ func NewAPIKeys(q *gen.Queries) *APIKeys {
 // Create mints a key for a user. scopes must be validated by the caller
 // against the RBAC catalog.
 func (k *APIKeys) Create(ctx context.Context, userID uuid.UUID, name string, scopes []string, expires *time.Time) (fullKey string, row gen.ApiKey, err error) {
-	prefix, err := tokenx.New(APIKeyPrefix)
+	lookup, err := tokenx.New(APIKeyPrefix)
 	if err != nil {
 		return "", gen.ApiKey{}, fmt.Errorf("generate api key: %w", err)
 	}
@@ -34,13 +36,12 @@ func (k *APIKeys) Create(ctx context.Context, userID uuid.UUID, name string, sco
 	if err != nil {
 		return "", gen.ApiKey{}, fmt.Errorf("generate api key: %w", err)
 	}
-	fullKey = prefix + "_" + secret
-	// Store only the lookup prefix and the hash of the full key.
+	fullKey = lookup + "." + secret
 	row, err = k.q.CreateAPIKey(ctx, gen.CreateAPIKeyParams{
 		ID:         uuid.New(),
 		UserID:     userID,
 		Name:       name,
-		Prefix:     prefix,
+		Prefix:     lookup,
 		SecretHash: tokenx.Hash(fullKey),
 		Scopes:     scopes,
 		ExpiresAt:  expires,
@@ -53,11 +54,14 @@ func (k *APIKeys) Create(ctx context.Context, userID uuid.UUID, name string, sco
 
 // Resolve authenticates a presented key and returns its row (with scopes).
 func (k *APIKeys) Resolve(ctx context.Context, presented string) (gen.ApiKey, error) {
-	prefix, _, ok := tokenx.SplitPrefix(presented)
-	if !ok {
+	if !strings.HasPrefix(presented, APIKeyPrefix+"_") {
 		return gen.ApiKey{}, ErrAPIKeyInvalid
 	}
-	row, err := k.q.GetAPIKeyByPrefix(ctx, prefix)
+	dot := strings.LastIndexByte(presented, '.')
+	if dot < len(APIKeyPrefix)+2 {
+		return gen.ApiKey{}, ErrAPIKeyInvalid
+	}
+	row, err := k.q.GetAPIKeyByPrefix(ctx, presented[:dot])
 	if err != nil {
 		return gen.ApiKey{}, ErrAPIKeyInvalid
 	}

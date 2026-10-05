@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +36,24 @@ type Service struct {
 
 func NewService(pool *pgxpool.Pool, q *gen.Queries, ca *CA, auditLog *audit.Logger, log *slog.Logger) *Service {
 	return &Service{pool: pool, q: q, ca: ca, auditLog: auditLog, log: log}
+}
+
+// IssueToken mints a single-use enrollment token for a node (24h validity).
+// The token is returned exactly once to the admin; only its hash is stored.
+func (s *Service) IssueToken(ctx context.Context, nodeID uuid.UUID) (string, error) {
+	token, err := tokenx.New("qen")
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.q.CreateNodeToken(ctx, gen.CreateNodeTokenParams{
+		ID:        uuid.New(),
+		NodeID:    nodeID,
+		TokenHash: tokenx.Hash(token),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // Enroll validates a single-use token in a transaction, signs the daemon's

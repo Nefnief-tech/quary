@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"quarry.dev/quarry/internal/tokenx"
 	"quarry.dev/quarry/panel/internal/audit"
 	"quarry.dev/quarry/panel/internal/db/gen"
 )
@@ -106,21 +105,10 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, out)
 }
 
-// issueNodeToken mints a single-use enrollment token valid for 24h.
+// issueNodeToken delegates to the nodes service (single source of truth for
+// token issuance).
 func (s *Server) issueNodeToken(ctx context.Context, nodeID uuid.UUID) (string, error) {
-	token, err := tokenx.New("qen")
-	if err != nil {
-		return "", err
-	}
-	if _, err := s.q.CreateNodeToken(ctx, gen.CreateNodeTokenParams{
-		ID:        uuid.New(),
-		NodeID:    nodeID,
-		TokenHash: tokenx.Hash(token),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
-	}); err != nil {
-		return "", err
-	}
-	return token, nil
+	return s.nodeSvc.IssueToken(ctx, nodeID)
 }
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {

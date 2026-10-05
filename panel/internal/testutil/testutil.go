@@ -8,6 +8,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -68,4 +70,15 @@ func Count(t *testing.T, pool *pgxpool.Pool, query string, args ...any) int64 {
 		t.Fatalf("count query %q: %v", query, err)
 	}
 	return n
+}
+
+// RepoRoot returns the module root directory.
+func RepoRoot(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot determine repo root")
+	}
+	// testutil.go is at <root>/panel/internal/testutil/
+	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
 }

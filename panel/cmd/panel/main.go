@@ -132,8 +132,9 @@ func cmdServe() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// HTTP API
-	apiServer := api.New(cfg, log, rt.pool, rt.sessions, rt.keys, rt.auditLog)
+	// HTTP API + node services
+	nodeSvc := nodes.NewService(rt.pool, rt.q, rt.ca, rt.auditLog, log)
+	apiServer := api.New(cfg, log, rt.pool, rt.sessions, rt.keys, rt.auditLog, nodeSvc)
 	go func() {
 		if err := apiServer.Run(ctx); err != nil {
 			log.Error("http server failed", "err", err)
@@ -142,7 +143,6 @@ func cmdServe() {
 	}()
 
 	// Node gRPC (mTLS)
-	nodeSvc := nodes.NewService(rt.pool, rt.q, rt.ca, rt.auditLog, log)
 	lis, gs, err := nodes.NewListener(cfg, rt.ca)
 	if err != nil {
 		log.Error("grpc listener failed", "err", err)
