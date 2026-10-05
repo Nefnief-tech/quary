@@ -67,37 +67,51 @@ func (q *Queries) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const sessionWithUserByTokenHash = `-- name: SessionWithUserByTokenHash :one
-SELECT s.id AS session_id, s.expires_at, u.id AS user_id, u.username, u.email,
-       u.role_id, u.disabled AS user_disabled, r.name AS role_name
+const deleteSessionsOfUser = `-- name: DeleteSessionsOfUser :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+func (q *Queries) DeleteSessionsOfUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSessionsOfUser, userID)
+	return err
+}
+
+const sessionByIdentityByTokenHash = `-- name: SessionByIdentityByTokenHash :one
+SELECT s.id AS session_id, u.id AS user_id, u.username, u.email,
+       u.password_hash, u.role_id, u.disabled, u.created_at AS user_created_at,
+       u.updated_at AS user_updated_at, r.name AS role_name
 FROM sessions s
 JOIN users u ON u.id = s.user_id
 JOIN roles r ON r.id = u.role_id
 WHERE s.token_hash = $1 AND s.expires_at > now()
 `
 
-type SessionWithUserByTokenHashRow struct {
-	SessionID    uuid.UUID `json:"session_id"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	UserID       uuid.UUID `json:"user_id"`
-	Username     string    `json:"username"`
-	Email        *string   `json:"email"`
-	RoleID       uuid.UUID `json:"role_id"`
-	UserDisabled bool      `json:"user_disabled"`
-	RoleName     string    `json:"role_name"`
+type SessionByIdentityByTokenHashRow struct {
+	SessionID     uuid.UUID `json:"session_id"`
+	UserID        uuid.UUID `json:"user_id"`
+	Username      string    `json:"username"`
+	Email         *string   `json:"email"`
+	PasswordHash  string    `json:"password_hash"`
+	RoleID        uuid.UUID `json:"role_id"`
+	Disabled      bool      `json:"disabled"`
+	UserCreatedAt time.Time `json:"user_created_at"`
+	UserUpdatedAt time.Time `json:"user_updated_at"`
+	RoleName      string    `json:"role_name"`
 }
 
-func (q *Queries) SessionWithUserByTokenHash(ctx context.Context, tokenHash string) (SessionWithUserByTokenHashRow, error) {
-	row := q.db.QueryRow(ctx, sessionWithUserByTokenHash, tokenHash)
-	var i SessionWithUserByTokenHashRow
+func (q *Queries) SessionByIdentityByTokenHash(ctx context.Context, tokenHash string) (SessionByIdentityByTokenHashRow, error) {
+	row := q.db.QueryRow(ctx, sessionByIdentityByTokenHash, tokenHash)
+	var i SessionByIdentityByTokenHashRow
 	err := row.Scan(
 		&i.SessionID,
-		&i.ExpiresAt,
 		&i.UserID,
 		&i.Username,
 		&i.Email,
+		&i.PasswordHash,
 		&i.RoleID,
-		&i.UserDisabled,
+		&i.Disabled,
+		&i.UserCreatedAt,
+		&i.UserUpdatedAt,
 		&i.RoleName,
 	)
 	return i, err
