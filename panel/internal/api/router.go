@@ -41,6 +41,10 @@ func (s *Server) Router() http.Handler {
 	// Audit log (admin)
 	mux.Handle("GET /api/v1/audit", s.requirePerm("audit.read", http.HandlerFunc(s.listAudit)))
 
+	// Tunnel provider settings (admin)
+	mux.Handle("GET /api/v1/settings/expose", s.requireAuth(http.HandlerFunc(s.getExposeSettings)))
+	mux.Handle("PUT /api/v1/settings/expose", s.requireAuth(http.HandlerFunc(s.setExposeSettings)))
+
 	// Runners (version catalog for the create form)
 	mux.Handle("GET /api/v1/runners", s.requireAuth(http.HandlerFunc(s.listRunners)))
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"quarry.dev/quarry/daemon/internal/expose"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
@@ -103,8 +104,10 @@ func (c *Client) runChannel(ctx context.Context, api nodesv1.NodeAgentServiceCli
 
 	// Adopt containers left running by a previous daemon instance.
 	c.manager.Reconcile(ctx, em)
-	// Restart playit tunnel agents whose secrets survived the restart.
+	// Restart tunnel clients (playit agents, frpc) whose state survived
+	// the restart.
 	go c.playit.Reconcile(context.Background())
+	go c.playit.ReconcileFrp(context.Background())
 
 	for {
 		msg, err := stream.Recv()
@@ -165,6 +168,19 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		if err != nil {
 			return fmt.Errorf("invalid server id: %w", err)
 		}
+		if action.ExposeStart.GetProvider() == "frp" {
+			st, err := c.playit.StartFrp(ctx, serverID, expose.FrpParams{
+				ServerAddr: action.ExposeStart.GetFrpsAddr(),
+				ServerPort: action.ExposeStart.GetFrpsPort(),
+				Token:      action.ExposeStart.GetFrpsToken(),
+				RemotePort: action.ExposeStart.GetRemotePort(),
+				LocalPort:  action.ExposeStart.GetLocalPort(),
+			}, em)
+			if err != nil {
+				return err
+			}
+			return marshalBody(st, body)
+		}
 		st, err := c.playit.Start(ctx, serverID, em)
 		if err != nil {
 			return err
@@ -184,6 +200,9 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		serverID, err := uuid.Parse(action.ExposeStop.GetServerId())
 		if err != nil {
 			return fmt.Errorf("invalid server id: %w", err)
+		}
+		if action.ExposeStop.GetProvider() == "frp" {
+			return c.playit.StopFrp(ctx, serverID, em)
 		}
 		return c.playit.Stop(ctx, serverID, em)
 	case *nodesv1.Command_ListFiles:

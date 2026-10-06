@@ -15,6 +15,46 @@
 	let allocTo = $state(25575);
 	let newUser = $state({ username: '', password: '', role: 'user' });
 
+	// frp tunnel provider settings (admin)
+	let frp = $state({ enabled: false, server_addr: '', server_port: 7000, token_set: false });
+	let frpTokenInput = $state('');
+	let frpBusy = $state(false);
+	let frpNote = $state('');
+
+	async function loadFrp() {
+		try {
+			const res = await api.get<{ frp: typeof frp }>('/api/v1/settings/expose');
+			frp = res.frp;
+		} catch {
+			/* admin-only; ignore when not admin */
+		}
+	}
+
+	async function saveFrp(e: SubmitEvent) {
+		e.preventDefault();
+		frpBusy = true;
+		frpNote = '';
+		try {
+			const res = await api.put<{ frp: typeof frp }>('/api/v1/settings/expose', {
+				frp: {
+					enabled: frp.enabled,
+					server_addr: frp.server_addr,
+					server_port: Number(frp.server_port),
+					token: frpTokenInput
+				}
+			});
+			frp = res.frp;
+			frpTokenInput = '';
+			frpNote = frp.enabled
+				? 'frp enabled. Servers can now be exposed via the Public access card.'
+				: 'frp disabled.';
+		} catch (err) {
+			frpNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			frpBusy = false;
+		}
+	}
+
 	async function refresh() {
 		nodes = await api.get<Node[]>('/api/v1/nodes');
 		users = await api.get<User[]>('/api/v1/users');
@@ -27,6 +67,7 @@
 			return;
 		}
 		await refresh();
+		loadFrp();
 	});
 
 	async function createNode() {
@@ -214,5 +255,40 @@
 			<option value="admin">admin</option>
 		</select>
 		<button type="submit" class="btn btn-primary">Create user</button>
+	</form>
+</section>
+
+<section class="mb-10">
+	<h2 class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Tunnel provider (frp)</h2>
+	<form onsubmit={saveFrp} class="card space-y-4 p-5">
+		<p class="text-sm text-slate-400">
+			Let servers be exposed through an frp server: your own VPS running
+			<span class="font-mono text-slate-300">frps</span>, or any hosted frp fleet.
+			The token is stored encrypted.
+		</p>
+		<label class="flex items-center gap-2.5">
+			<input type="checkbox" class="h-4 w-4 accent-emerald-500" bind:checked={frp.enabled} />
+			<span class="text-sm text-slate-200">Enable frp tunnels</span>
+		</label>
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+			<label class="block md:col-span-2">
+				<span class="label">frps address</span>
+				<input class="input" placeholder="mc-relay.example.com" bind:value={frp.server_addr} />
+			</label>
+			<label class="block">
+				<span class="label">frps port</span>
+				<input type="number" min="1" max="65535" class="input" bind:value={frp.server_port} />
+			</label>
+			<label class="block">
+				<span class="label">auth token {#if frp.token_set}<span class="text-xs text-slate-500">(saved)</span>{/if}</span>
+				<input type="password" class="input" placeholder={frp.token_set ? 'leave empty to keep' : 'token'} bind:value={frpTokenInput} />
+			</label>
+		</div>
+		<div class="flex items-center gap-4">
+			<button type="submit" class="btn btn-primary" disabled={frpBusy}>
+				{frpBusy ? 'Saving…' : 'Save settings'}
+			</button>
+			{#if frpNote}<p class="text-xs text-slate-500">{frpNote}</p>{/if}
+		</div>
 	</form>
 </section>

@@ -43,7 +43,8 @@ var (
 	secretRe = regexp.MustCompile(`^[0-9a-f]{32,128}$`)
 )
 
-// AgentRuntime manages the agent container on this node.
+// AgentRuntime manages tunnel containers on this node (playit agent and
+// frpc client).
 type AgentRuntime interface {
 	// EnsurePlayitImage pulls the pinned agent image if not present.
 	EnsurePlayitImage(ctx context.Context) error
@@ -57,6 +58,12 @@ type AgentRuntime interface {
 	// StreamPlayitLogs feeds filtered agent log lines to onLine until the
 	// container's logs end or ctx is cancelled.
 	StreamPlayitLogs(ctx context.Context, id uuid.UUID, onLine func(line string))
+
+	// frpc tunnel client containers
+	EnsureFrpcImage(ctx context.Context) error
+	StartFrpc(ctx context.Context, id uuid.UUID, configPath string) error
+	StopFrpc(ctx context.Context, id uuid.UUID) error
+	FrpcRunning(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 // Emitter mirrors setup progress into the server's console stream.
@@ -75,6 +82,10 @@ type Config struct {
 	// DataDir is the daemon's persistent state directory; agent secrets
 	// are stored here (0600).
 	DataDir string
+	// ServersRoot is the server data root. It must be the host-visible
+	// path (the compose contract) so frpc configs written here can be
+	// bind-mounted into sibling containers.
+	ServersRoot string
 }
 
 // Status is the JSON-encoded command result.

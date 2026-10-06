@@ -112,12 +112,21 @@ message Command {
   }
 }
 
-// ExposeStart begins the playit.gg tunnel setup for a server: the daemon
-// ensures the version-pinned agent binaries are present and generates a
-// claim URL. Result JSON: {"claim_url":"…","code":"…"}, or {"active":true}
-// when the tunnel is already running.
+// ExposeStart begins tunnel setup for a server. Provider selects the
+// tunnel technology; the default (empty) is playit. For frp the panel
+// supplies its frps endpoint, auth token and the remote port to claim.
+// Result JSON: {"claim_url":"…","code":"…"} for playit,
+// {"active":true,"address":"host:port"} for frp.
 message ExposeStart {
   string server_id = 1;
+  string provider = 2;
+  // frp-only fields (ignored by other providers).
+  string frps_addr = 3;
+  int32 frps_port = 4;
+  string frps_token = 5;
+  int32 remote_port = 6;
+  // The server's game port on the node; frpc forwards it.
+  int32 local_port = 7;
 }
 
 // ExposeClaim exchanges a claimed code for the agent secret (if the user
@@ -131,6 +140,7 @@ message ExposeClaim {
 // ExposeStop halts the server's tunnel agent and forgets its secret.
 message ExposeStop {
   string server_id = 1;
+  string provider = 2; // empty = playit
 }
 
 // RunConsole writes one line to the server console and captures reply lines

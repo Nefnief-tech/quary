@@ -766,13 +766,22 @@ func (*Command_ExposeClaim) isCommand_Action() {}
 
 func (*Command_ExposeStop) isCommand_Action() {}
 
-// ExposeStart begins the playit.gg tunnel setup for a server: the daemon
-// ensures the version-pinned agent binaries are present and generates a
-// claim URL. Result JSON: {"claim_url":"…","code":"…"}, or {"active":true}
-// when the tunnel is already running.
+// ExposeStart begins tunnel setup for a server. Provider selects the
+// tunnel technology; the default (empty) is playit. For frp the panel
+// supplies its frps endpoint, auth token and the remote port to claim.
+// Result JSON: {"claim_url":"…","code":"…"} for playit,
+// {"active":true,"address":"host:port"} for frp.
 type ExposeStart struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Provider string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
+	// frp-only fields (ignored by other providers).
+	FrpsAddr   string `protobuf:"bytes,3,opt,name=frps_addr,json=frpsAddr,proto3" json:"frps_addr,omitempty"`
+	FrpsPort   int32  `protobuf:"varint,4,opt,name=frps_port,json=frpsPort,proto3" json:"frps_port,omitempty"`
+	FrpsToken  string `protobuf:"bytes,5,opt,name=frps_token,json=frpsToken,proto3" json:"frps_token,omitempty"`
+	RemotePort int32  `protobuf:"varint,6,opt,name=remote_port,json=remotePort,proto3" json:"remote_port,omitempty"`
+	// The server's game port on the node; frpc forwards it.
+	LocalPort     int32 `protobuf:"varint,7,opt,name=local_port,json=localPort,proto3" json:"local_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -812,6 +821,48 @@ func (x *ExposeStart) GetServerId() string {
 		return x.ServerId
 	}
 	return ""
+}
+
+func (x *ExposeStart) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *ExposeStart) GetFrpsAddr() string {
+	if x != nil {
+		return x.FrpsAddr
+	}
+	return ""
+}
+
+func (x *ExposeStart) GetFrpsPort() int32 {
+	if x != nil {
+		return x.FrpsPort
+	}
+	return 0
+}
+
+func (x *ExposeStart) GetFrpsToken() string {
+	if x != nil {
+		return x.FrpsToken
+	}
+	return ""
+}
+
+func (x *ExposeStart) GetRemotePort() int32 {
+	if x != nil {
+		return x.RemotePort
+	}
+	return 0
+}
+
+func (x *ExposeStart) GetLocalPort() int32 {
+	if x != nil {
+		return x.LocalPort
+	}
+	return 0
 }
 
 // ExposeClaim exchanges a claimed code for the agent secret (if the user
@@ -866,6 +917,7 @@ func (x *ExposeClaim) GetServerId() string {
 type ExposeStop struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Provider      string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"` // empty = playit
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -903,6 +955,13 @@ func (*ExposeStop) Descriptor() ([]byte, []int) {
 func (x *ExposeStop) GetServerId() string {
 	if x != nil {
 		return x.ServerId
+	}
+	return ""
+}
+
+func (x *ExposeStop) GetProvider() string {
+	if x != nil {
+		return x.Provider
 	}
 	return ""
 }
@@ -2284,14 +2343,24 @@ const file_quarry_node_v1_nodes_proto_rawDesc = "" +
 	"\fexpose_claim\x18\x0e \x01(\v2\x1b.quarry.node.v1.ExposeClaimH\x00R\vexposeClaim\x12=\n" +
 	"\vexpose_stop\x18\x0f \x01(\v2\x1a.quarry.node.v1.ExposeStopH\x00R\n" +
 	"exposeStopB\b\n" +
-	"\x06action\"*\n" +
+	"\x06action\"\xdf\x01\n" +
 	"\vExposeStart\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"*\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x1b\n" +
+	"\tfrps_addr\x18\x03 \x01(\tR\bfrpsAddr\x12\x1b\n" +
+	"\tfrps_port\x18\x04 \x01(\x05R\bfrpsPort\x12\x1d\n" +
+	"\n" +
+	"frps_token\x18\x05 \x01(\tR\tfrpsToken\x12\x1f\n" +
+	"\vremote_port\x18\x06 \x01(\x05R\n" +
+	"remotePort\x12\x1d\n" +
+	"\n" +
+	"local_port\x18\a \x01(\x05R\tlocalPort\"*\n" +
 	"\vExposeClaim\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\")\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"E\n" +
 	"\n" +
 	"ExposeStop\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"t\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bprovider\x18\x02 \x01(\tR\bprovider\"t\n" +
 	"\n" +
 	"RunConsole\x12\x1b\n" +
 	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x14\n" +

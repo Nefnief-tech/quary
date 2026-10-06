@@ -67,13 +67,15 @@ type MapConfig struct {
 	Version string `json:"version,omitempty"`
 }
 
-// ExposeConfig is the playit.gg tunnel state: pending while the claim is
-// open, active once the agent runs on the node.
+// ExposeConfig is the tunnel state: provider "playit" (pending while the
+// claim is open) or "frp" (a mapping on the configured frps).
 type ExposeConfig struct {
-	Pending  bool   `json:"pending,omitempty"`
-	Active   bool   `json:"active,omitempty"`
-	ClaimURL string `json:"claim_url,omitempty"`
-	Address  string `json:"address,omitempty"`
+	Provider   string `json:"provider,omitempty"`
+	Pending    bool   `json:"pending,omitempty"`
+	Active     bool   `json:"active,omitempty"`
+	ClaimURL   string `json:"claim_url,omitempty"`
+	Address    string `json:"address,omitempty"`
+	RemotePort int32  `json:"remote_port,omitempty"`
 }
 
 // Fixed extra filename: the daemon removes older versioned variants, so

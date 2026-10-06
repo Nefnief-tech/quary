@@ -138,6 +138,12 @@ type Session struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+type Setting struct {
+	Key       string    `json:"key"`
+	Value     []byte    `json:"value"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type User struct {
 	ID           uuid.UUID `json:"id"`
 	Username     string    `json:"username"`

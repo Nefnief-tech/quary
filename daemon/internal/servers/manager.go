@@ -621,6 +621,20 @@ func (m *Manager) Reconcile(ctx context.Context, emit Emitter) {
 		emit.EmitStatus(id, "running", "reattached after daemon restart")
 		m.log.Info("reconciled running server", "server_id", id)
 	}
+	// Exited leftovers mean the server is not running; correct stale
+	// "running" statuses from before the downtime.
+	exited, err := m.rt.ListExited(ctx)
+	if err != nil {
+		return
+	}
+	for _, id := range exited {
+		if m.get(id) != nil {
+			continue
+		}
+		_ = m.rt.Remove(ctx, id)
+		emit.EmitStatus(id, "offline", "stopped while the daemon was down")
+		m.log.Info("reconciled exited server to offline", "server_id", id)
+	}
 }
 
 // ---------------------------------------------------------------------------

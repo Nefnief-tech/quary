@@ -241,6 +241,30 @@ func (d *Docker) ListRunning(ctx context.Context) ([]uuid.UUID, error) {
 	return out, nil
 }
 
+// ListExited returns labeled quarry containers that exist but are not
+// running.
+func (d *Docker) ListExited(ctx context.Context) ([]uuid.UUID, error) {
+	list, err := d.cli.ContainerList(ctx, client.ContainerListOptions{
+		All:     true,
+		Filters: client.Filters{}.Add("label", labelServer),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []uuid.UUID
+	for _, c := range list.Items {
+		if c.State == "running" {
+			continue
+		}
+		id, err := uuid.Parse(c.Labels[labelServer])
+		if err != nil {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 type dockerStatsJSON struct {
 	CPUStats struct {
 		CPUUsage struct {

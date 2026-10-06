@@ -70,6 +70,9 @@ type ContainerRuntime interface {
 	// ListRunning returns IDs of containers labeled as quarry servers that
 	// are currently running (used to reconcile after daemon restarts).
 	ListRunning(ctx context.Context) ([]uuid.UUID, error)
+	// ListExited returns IDs of labeled quarry containers that exist but
+	// are not running (stale statuses after a daemon downtime).
+	ListExited(ctx context.Context) ([]uuid.UUID, error)
 	// Attach reattaches a console to an already-running container.
 	Attach(ctx context.Context, id uuid.UUID) (Console, error)
 	// DiskUsage returns the size (bytes) of a server data directory.

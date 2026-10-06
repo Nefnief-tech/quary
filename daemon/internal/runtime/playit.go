@@ -157,4 +157,85 @@ type AgentLogStreamer interface {
 	StreamPlayitLogs(ctx context.Context, id uuid.UUID, onLine func(line string))
 }
 
+// ---------------------------------------------------------------------------
+// frpc tunnel client containers (frp provider)
+// ---------------------------------------------------------------------------
+
+// frpcImageRef is snowdreamtech/frpc 0.66.0 (frp client), pinned by digest.
+const frpcImageRef = "snowdreamtech/frpc@sha256:9ec37fd3182e48bb3e768bb4d33e06a6f9dfa709991f3987478b664a8301cb99"
+
+func frpcContainerName(id uuid.UUID) string {
+	return "quarry-frp-" + id.String()
+}
+
+// EnsureFrpcImage pulls the pinned frpc image if not present locally.
+func (d *Docker) EnsureFrpcImage(ctx context.Context) error {
+	if _, err := d.cli.ImageInspect(ctx, frpcImageRef); err == nil {
+		return nil
+	} else if !isNotFound(err) {
+		return err
+	}
+	rc, err := d.cli.ImagePull(ctx, frpcImageRef, client.ImagePullOptions{})
+	if err != nil {
+		return fmt.Errorf("pull frpc image: %w", err)
+	}
+	defer func() { _ = rc.Close() }()
+	_, _ = io.Copy(io.Discard, rc)
+	return nil
+}
+
+// StartFrpc runs the frpc container for a server with the generated config
+// bind-mounted read-only. Host networking: frpc must reach the frps
+// endpoint and the server's 127.0.0.1 game port.
+func (d *Docker) StartFrpc(ctx context.Context, id uuid.UUID, configPath string) error {
+	_, _ = d.cli.ContainerRemove(ctx, frpcContainerName(id), client.ContainerRemoveOptions{Force: true})
+
+	cfg := &container.Config{
+		Image: frpcImageRef,
+		Labels: map[string]string{
+			"quarry.frp": id.String(),
+		},
+	}
+	hostCfg := &container.HostConfig{
+		NetworkMode: container.NetworkMode("host"),
+		Binds:       []string{configPath + ":/etc/frp/frpc.toml:ro"},
+		Resources: container.Resources{
+			Memory:     64 << 20,
+			MemorySwap: 64 << 20,
+		},
+		SecurityOpt: []string{"no-new-privileges"},
+	}
+	created, err := d.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:     cfg,
+		HostConfig: hostCfg,
+		Name:       frpcContainerName(id),
+	})
+	if err != nil {
+		return fmt.Errorf("create frpc container: %w", err)
+	}
+	if _, err := d.cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); err != nil {
+		_, _ = d.cli.ContainerRemove(context.Background(), created.ID, client.ContainerRemoveOptions{Force: true})
+		return fmt.Errorf("start frpc container: %w", err)
+	}
+	return nil
+}
+
+// StopFrpc removes the frpc container for a server.
+func (d *Docker) StopFrpc(ctx context.Context, id uuid.UUID) error {
+	_, err := d.cli.ContainerRemove(ctx, frpcContainerName(id), client.ContainerRemoveOptions{Force: true})
+	return err
+}
+
+// FrpcRunning reports whether the frpc container is running.
+func (d *Docker) FrpcRunning(ctx context.Context, id uuid.UUID) (bool, error) {
+	inspect, err := d.cli.ContainerInspect(ctx, frpcContainerName(id), client.ContainerInspectOptions{})
+	if err != nil {
+		if isNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return inspect.Container.State != nil && inspect.Container.State.Running, nil
+}
+
 var _ = slog.Default

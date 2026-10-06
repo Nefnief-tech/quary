@@ -25,8 +25,15 @@ export interface Server {
 	map_url?: string;
 	/** Last five minutes of activity samples for the charts. */
 	history?: { t: string; cpu_percent: number; memory_used_mb: number; memory_limit_mb: number; players: number }[];
-	/** playit.gg tunnel state: pending (claim open), active (tunnel live). */
-	expose?: { pending?: boolean; active?: boolean; claim_url?: string; address?: string };
+	/** Tunnel state: playit (pending/claim) or frp (remote port mapping). */
+	expose?: {
+		provider?: 'playit' | 'frp';
+		pending?: boolean;
+		active?: boolean;
+		claim_url?: string;
+		address?: string;
+		remote_port?: number;
+	};
 	created_at: string;
 }
 

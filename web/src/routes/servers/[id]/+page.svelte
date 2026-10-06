@@ -195,8 +195,35 @@
 	let exposeNote = $state('');
 	let exposeAddrInput = $state('');
 
+	// frp provider availability (admin settings) + per-server remote port
+	let frpEnabled = $state(false);
+	let frpRemotePort = $state(25565);
+
+	onMount(async () => {
+		api
+			.get<{ frp: { enabled: boolean } }>('/api/v1/settings/expose')
+			.then((res) => (frpEnabled = res.frp.enabled))
+			.catch(() => {});
+	});
+
 	function applyExpose(ex: Server['expose']) {
 		if (server) server = { ...server, expose: ex };
+	}
+
+	async function startFrp() {
+		exposeBusy = true;
+		exposeNote = '';
+		try {
+			const res = await api.post<{ expose: Server['expose'] }>(`/api/v1/servers/${id}/expose`, {
+				provider: 'frp',
+				remote_port: Number(frpRemotePort)
+			});
+			applyExpose(res.expose);
+		} catch (err) {
+			exposeNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			exposeBusy = false;
+		}
 	}
 
 	async function startExpose() {
@@ -1451,7 +1478,12 @@
 			<div class="card p-4">
 				<h3 class="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Public access</h3>
 				{#if server.expose?.active}
-					{#if server.expose.address}
+					{#if server.expose.provider === 'frp'}
+						<p class="font-mono text-xs break-all text-emerald-300">{server.expose.address}</p>
+						<p class="mt-1.5 text-[10px] text-zinc-600">
+							Players join via your frp relay ({server.expose.remote_port ? `remote port ${server.expose.remote_port}` : 'frps'}).
+						</p>
+					{:else if server.expose.address}
 						<p class="font-mono text-xs break-all text-emerald-300">{server.expose.address}</p>
 						<p class="mt-1.5 text-[10px] text-zinc-600">Players join via this playit.gg address from anywhere.</p>
 					{:else}
@@ -1460,14 +1492,16 @@
 							Find your tunnel's address in the playit dashboard and save it here.
 						</p>
 					{/if}
-					<form class="mt-2 flex items-center gap-1.5" onsubmit={saveExposeAddress}>
-						<input
-							class="input flex-1 py-1 text-xs"
-							placeholder="my-tunnel.playit.gg"
-							bind:value={exposeAddrInput}
-						/>
-						<button type="submit" disabled={exposeBusy} class="btn btn-secondary px-2.5 py-1 text-xs">Save</button>
-					</form>
+					{#if server.expose.provider !== 'frp'}
+						<form class="mt-2 flex items-center gap-1.5" onsubmit={saveExposeAddress}>
+							<input
+								class="input flex-1 py-1 text-xs"
+								placeholder="my-tunnel.playit.gg"
+								bind:value={exposeAddrInput}
+							/>
+							<button type="submit" disabled={exposeBusy} class="btn btn-secondary px-2.5 py-1 text-xs">Save</button>
+						</form>
+					{/if}
 					<button
 						class="mt-2 text-[11px] text-zinc-600 transition hover:text-rose-300"
 						disabled={exposeBusy}
@@ -1475,7 +1509,7 @@
 					>
 						<i class="ph ph-plug"></i> Stop tunnel
 					</button>
-				{:else if server.expose?.pending && server.expose.claim_url}
+				{:else if server.expose?.provider === 'playit' && server.expose?.pending && server.expose.claim_url}
 					<a
 						href={server.expose.claim_url}
 						target="_blank"
@@ -1496,11 +1530,34 @@
 						{exposeBusy ? 'Checking…' : 'I claimed it — check'}
 					</button>
 				{:else}
-					<button class="btn btn-secondary w-full px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startExpose}>
-						<i class="ph ph-globe-hemisphere-west"></i> {exposeBusy ? 'Setting up…' : 'Expose via playit.gg'}
-					</button>
+					<div class="flex items-center gap-2">
+						<button class="btn btn-secondary flex-1 px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startExpose}>
+							<i class="ph ph-globe-hemisphere-west"></i> {exposeBusy ? 'Setting up…' : 'playit.gg'}
+						</button>
+						{#if frpEnabled}
+							<button class="btn btn-secondary flex-1 px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startFrp}>
+								<i class="ph ph-house-line"></i> frp
+							</button>
+						{/if}
+					</div>
+					{#if frpEnabled}
+						<div class="mt-2 flex items-center gap-1.5">
+							<span class="text-[10px] text-zinc-600">remote port</span>
+							<input
+								type="number"
+								min="1024"
+								max="65535"
+								class="input flex-1 py-1 font-mono text-xs"
+								bind:value={frpRemotePort}
+							/>
+						</div>
+					{/if}
 					<p class="mt-1.5 text-[10px] text-zinc-600">
-						Free public tunnel on any Minecraft version — no port forwarding, works on every runner.
+						{#if frpEnabled}
+							playit.gg is the free hosted relay; frp uses the server configured in Admin.
+						{:else}
+							Free public tunnel on any Minecraft version — no port forwarding, works on every runner.
+						{/if}
 					</p>
 				{/if}
 				{#if exposeNote}

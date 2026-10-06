@@ -66,7 +66,7 @@ func main() {
 		log.Error("ssrf guard init failed", "err", err)
 		os.Exit(1)
 	}
-	playit, err := expose.NewManager(expose.Config{DataDir: cfg.DataDir}, rt, playitGuard, log)
+	playit, err := expose.NewManager(expose.Config{DataDir: cfg.DataDir, ServersRoot: cfg.ServersRoot}, rt, playitGuard, log)
 	if err != nil {
 		log.Error("playit manager init failed", "err", err)
 		os.Exit(1)

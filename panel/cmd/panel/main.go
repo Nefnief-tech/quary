@@ -35,6 +35,7 @@ import (
 	"quarry.dev/quarry/panel/internal/players"
 	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/servers"
+	"quarry.dev/quarry/panel/internal/settings"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
 )
 
@@ -145,6 +146,13 @@ func cmdServe() {
 	chanMgr := nodes.NewChannelManager(log)
 	catalog := runners.NewCatalog(rt.q, log)
 
+	// Tunnel provider settings (frp; token sealed at rest)
+	settingsSvc, err := settings.NewService(rt.pool, rt.sealKey)
+	if err != nil {
+		log.Error("settings service init failed", "err", err)
+		os.Exit(1)
+	}
+
 	// Server orchestration (create/power/events)
 	modrinth := marketplace.NewModrinth()
 	consolePersister := consolelog.NewPersister(rt.pool, rt.q, log)
@@ -158,19 +166,20 @@ func cmdServe() {
 	// HTTP API + node services
 	nodeSvc := nodes.NewService(rt.pool, rt.q, rt.ca, rt.auditLog, log)
 	apiServer := api.New(api.Deps{
-		Cfg:      cfg,
-		Log:      log,
-		Pool:     rt.pool,
-		Sessions: rt.sessions,
-		Keys:     rt.keys,
-		AuditLog: rt.auditLog,
-		Nodes:    nodeSvc,
-		Servers:  serverSvc,
-		Channels: chanMgr,
-		Catalog:  catalog,
-		Modrinth: modrinth,
-		Hub:      hub,
-		SealKey:  rt.sealKey,
+		Cfg:         cfg,
+		Log:         log,
+		Pool:        rt.pool,
+		Sessions:    rt.sessions,
+		Keys:        rt.keys,
+		AuditLog:    rt.auditLog,
+		Nodes:       nodeSvc,
+		Servers:     serverSvc,
+		Channels:    chanMgr,
+		Catalog:     catalog,
+		Modrinth:    modrinth,
+		Hub:         hub,
+		SealKey:     rt.sealKey,
+		SettingsSvc: settingsSvc,
 	})
 	go func() {
 		if err := apiServer.Run(ctx); err != nil {
