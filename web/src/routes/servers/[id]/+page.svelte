@@ -216,16 +216,20 @@
 		exposeBusy = true;
 		exposeNote = '';
 		try {
-			const res = await api.post<{ expose: Server['expose'] }>(
+			const res = await api.post<{ expose: Server['expose']; state?: string }>(
 				`/api/v1/servers/${id}/expose/claim`,
 				{}
 			);
 			applyExpose(res.expose);
 			if (res.expose?.active) {
 				exposeNote =
-					'Tunnel claimed and agent started. Create the tunnel in your playit dashboard, then save the address it gave you.';
+					'Tunnel claimed and agent started. Add a TCP tunnel to 127.0.0.1:' +
+					(server?.port ?? 25565) +
+					' in your playit dashboard, then save the address it gives you.';
+			} else if (res.state === 'WaitingForUser') {
+				exposeNote = 'Almost there: the playit tab is open — click the approve/confirm button there, then check again.';
 			} else {
-				exposeNote = 'Not claimed yet — open the claim link first, then try again.';
+				exposeNote = 'Not claimed yet — open the claim link first, sign in, and finish the setup there.';
 			}
 		} catch (err) {
 			exposeNote = err instanceof Error ? err.message : String(err);

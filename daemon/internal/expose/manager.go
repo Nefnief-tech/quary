@@ -37,6 +37,8 @@ const (
 )
 
 var (
+	// playit claim codes are 5 random bytes, hex-encoded (upstream format).
+	claimCodeRe = regexp.MustCompile(`^[0-9a-f]{10}$`)
 	// agent secrets are hex strings (validated by the agent itself).
 	secretRe = regexp.MustCompile(`^[0-9a-f]{32,128}$`)
 )
@@ -79,6 +81,9 @@ type Config struct {
 type Status struct {
 	Active   bool   `json:"active"`
 	ClaimURL string `json:"claim_url,omitempty"`
+	// State carries playit's claim status when the claim is not done:
+	// WaitingForUserVisit (open the link) or WaitingForUser (approve it).
+	State string `json:"state,omitempty"`
 }
 
 // Manager runs one playit agent per exposed server.
@@ -117,8 +122,51 @@ func (m *Manager) hasSecret(id uuid.UUID) bool {
 	return err == nil
 }
 
+// Pending claim codes survive daemon restarts via a small file, so an open
+// claim in the browser is not invalidated by a deploy.
+func (m *Manager) pendingCodePath(id uuid.UUID) string {
+	return m.cfg.DataDir + "/playit-" + id.String() + ".pending"
+}
+
+func (m *Manager) pendingCode(id uuid.UUID) (string, bool) {
+	m.mu.Lock()
+	code, ok := m.pending[id]
+	m.mu.Unlock()
+	if ok {
+		return code, true
+	}
+	raw, err := os.ReadFile(m.pendingCodePath(id))
+	if err != nil {
+		return "", false
+	}
+	code = strings.TrimSpace(string(raw))
+	if !claimCodeRe.MatchString(code) {
+		return "", false
+	}
+	m.mu.Lock()
+	m.pending[id] = code
+	m.mu.Unlock()
+	return code, true
+}
+
+func (m *Manager) storePendingCode(id uuid.UUID, code string) {
+	m.mu.Lock()
+	m.pending[id] = code
+	m.mu.Unlock()
+	_ = os.WriteFile(m.pendingCodePath(id), []byte(code+"\n"), 0o600)
+}
+
+func (m *Manager) clearPendingCode(id uuid.UUID) {
+	m.mu.Lock()
+	delete(m.pending, id)
+	m.mu.Unlock()
+	_ = os.Remove(m.pendingCodePath(id))
+}
+
 // Start begins setup: with a secret on file it just ensures the agent
 // runs; otherwise it generates a claim code and returns the claim URL.
+// An already-pending code is reused (its URL is stable), so clicking
+// setup twice does not invalidate an open claim.
 func (m *Manager) Start(ctx context.Context, id uuid.UUID, emit Emitter) (*Status, error) {
 	if m.hasSecret(id) {
 		if err := m.rt.EnsurePlayitImage(ctx); err != nil {
@@ -133,6 +181,11 @@ func (m *Manager) Start(ctx context.Context, id uuid.UUID, emit Emitter) (*Statu
 		}
 		m.streamLogs(ctx, id, emit)
 		return &Status{Active: true}, nil
+	}
+
+	if code, pending := m.pendingCode(id); pending {
+		emitConsole(emit, id, "playit: claim already open at "+claimURL+code)
+		return &Status{ClaimURL: claimURL + code}, nil
 	}
 
 	// Claim codes are 5 random bytes hex-encoded, matching upstream.
@@ -152,13 +205,16 @@ func (m *Manager) Start(ctx context.Context, id uuid.UUID, emit Emitter) (*Statu
 	m.mu.Lock()
 	m.pending[id] = code
 	m.mu.Unlock()
+	m.storePendingCode(id, code)
 	url := claimURL + code
 	emitConsole(emit, id, "playit: claim the tunnel at "+url)
 	return &Status{ClaimURL: url}, nil
 }
 
 // Claim finishes setup after the user's browser claim: exchanges the code
-// for the agent secret, stores it and starts the container.
+// for the agent secret, stores it and starts the container. The returned
+// State carries playit's own claim status so the UI can guide the user
+// when the claim has not gone through yet.
 func (m *Manager) Claim(ctx context.Context, id uuid.UUID, emit Emitter) (*Status, error) {
 	if m.hasSecret(id) {
 		secret, err := m.loadSecret(id)
@@ -168,23 +224,33 @@ func (m *Manager) Claim(ctx context.Context, id uuid.UUID, emit Emitter) (*Statu
 		if err := m.rt.StartPlayitAgent(ctx, id, secret); err != nil {
 			return nil, err
 		}
-		return &Status{Active: true}, nil
+		m.streamLogs(ctx, id, emit)
+		return &Status{Active: true, State: "active"}, nil
 	}
-	m.mu.Lock()
-	code, pending := m.pending[id]
-	m.mu.Unlock()
+	code, pending := m.pendingCode(id)
 	if !pending {
 		return nil, errors.New("no pending tunnel setup; start it first")
 	}
 
-	ctxWait, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctxWait, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	// Poll setup until the user accepts (or the deadline passes).
+	// Poll setup until the user accepts (or the deadline passes). Transient
+	// network errors are retried within the window, not fatal.
+	var lastStatus string
 	for {
 		status, err := m.callSetup(ctxWait, code)
 		if err != nil {
-			return nil, err
+			if ctxWait.Err() != nil {
+				return nil, err // window over; surface the network failure
+			}
+			select {
+			case <-ctxWait.Done():
+				return nil, err
+			case <-time.After(2 * time.Second):
+				continue
+			}
 		}
+		lastStatus = status
 		if status == "UserAccepted" {
 			break
 		}
@@ -193,21 +259,33 @@ func (m *Manager) Claim(ctx context.Context, id uuid.UUID, emit Emitter) (*Statu
 		}
 		select {
 		case <-ctxWait.Done():
-			return &Status{ClaimURL: claimURL + code}, nil // still unclaimed
+			return &Status{ClaimURL: claimURL + code, State: lastStatus}, nil // still unclaimed
 		case <-time.After(2 * time.Second):
 		}
 	}
 
-	secret, err := m.callExchange(ctxWait, code)
-	if err != nil {
-		return nil, fmt.Errorf("exchange claim: %w", err)
+	// Exchange right after acceptance; the API can briefly answer with a
+	// failure while the claim settles, so retry a few times.
+	var secret string
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		secret, lastErr = m.callExchange(ctxWait, code)
+		if lastErr == nil {
+			break
+		}
+		select {
+		case <-ctxWait.Done():
+			return nil, fmt.Errorf("exchange claim: %w", lastErr)
+		case <-time.After(2 * time.Second):
+		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("exchange claim: %w", lastErr)
 	}
 	if err := m.storeSecret(id, secret); err != nil {
 		return nil, err
 	}
-	m.mu.Lock()
-	delete(m.pending, id)
-	m.mu.Unlock()
+	m.clearPendingCode(id)
 
 	if err := m.rt.EnsurePlayitImage(ctxWait); err != nil {
 		return nil, err
@@ -231,13 +309,12 @@ func (m *Manager) streamLogs(ctx context.Context, id uuid.UUID, emit Emitter) {
 	})
 }
 
-// Stop removes the agent container and forgets the server's secret.
+// Stop removes the agent container and forgets the server's secret and any
+// open claim.
 func (m *Manager) Stop(ctx context.Context, id uuid.UUID, emit Emitter) error {
 	_ = m.rt.StopPlayitAgent(ctx, id)
 	_ = os.Remove(m.cfg.secretPath(id))
-	m.mu.Lock()
-	delete(m.pending, id)
-	m.mu.Unlock()
+	m.clearPendingCode(id)
 	emitConsole(emit, id, "playit: tunnel stopped")
 	return nil
 }
@@ -269,25 +346,33 @@ func (m *Manager) Reconcile(ctx context.Context) {
 // playit claim API (https://api.playit.gg)
 // ---------------------------------------------------------------------------
 
-// callSetup registers a claim code and reports its state. Responses are
-// bare strings: WaitingForUserVisit | WaitingForUser | UserAccepted |
-// UserRejected.
+// callSetup registers a claim code and reports its state. The API wraps
+// responses as {"status":"success","data":"WaitingForUserVisit"|…}.
 func (m *Manager) callSetup(ctx context.Context, code string) (string, error) {
 	body := fmt.Sprintf(`{"code":%q,"agent_type":"self-managed","version":"quarry 0.1"}`, code)
-	return m.postString(ctx, "/claim/setup", body)
+	data, err := m.postEnvelope(ctx, "/claim/setup", body)
+	if err != nil {
+		return "", err
+	}
+	var status string
+	if err := json.Unmarshal(data, &status); err != nil {
+		return "", fmt.Errorf("unexpected claim setup payload: %s", truncate(string(data)))
+	}
+	return status, nil
 }
 
-// callExchange swaps an accepted claim code for the agent secret.
+// callExchange swaps an accepted claim code for the agent secret. The
+// envelope's data holds {"secret_key":"<hex>"}.
 func (m *Manager) callExchange(ctx context.Context, code string) (string, error) {
-	raw, err := m.postJSON(ctx, "/claim/exchange", fmt.Sprintf(`{"code":%q}`, code))
+	data, err := m.postEnvelope(ctx, "/claim/exchange", fmt.Sprintf(`{"code":%q}`, code))
 	if err != nil {
 		return "", err
 	}
 	var res struct {
 		SecretKey string `json:"secret_key"`
 	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return "", err
+	if err := json.Unmarshal(data, &res); err != nil {
+		return "", fmt.Errorf("unexpected claim exchange payload: %s", truncate(string(data)))
 	}
 	secret := strings.ToLower(strings.TrimSpace(res.SecretKey))
 	if !secretRe.MatchString(secret) {
@@ -296,12 +381,27 @@ func (m *Manager) callExchange(ctx context.Context, code string) (string, error)
 	return secret, nil
 }
 
-func (m *Manager) postString(ctx context.Context, path, body string) (string, error) {
+// apiEnvelope is playit's JSON-RPC-style response wrapper.
+type apiEnvelope struct {
+	Status string          `json:"status"`
+	Data   json.RawMessage `json:"data"`
+	Error  json.RawMessage `json:"error"`
+}
+
+// postEnvelope POSTs and unwraps {"status":"success","data":…} envelopes.
+func (m *Manager) postEnvelope(ctx context.Context, path, body string) (json.RawMessage, error) {
 	raw, err := m.postJSON(ctx, path, body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return strings.Trim(strings.TrimSpace(string(raw)), `"`), nil
+	var env apiEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("malformed reply from %s: %s", path, truncate(string(raw)))
+	}
+	if env.Status != "success" {
+		return nil, fmt.Errorf("%s: %s: %s", path, env.Status, truncate(string(env.Error)))
+	}
+	return env.Data, nil
 }
 
 func (m *Manager) postJSON(ctx context.Context, path, body string) ([]byte, error) {
@@ -320,10 +420,26 @@ func (m *Manager) postJSON(ctx context.Context, path, body string) ([]byte, erro
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("POST %s: status %d", path, resp.StatusCode)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		// The API reports claim errors (NotSetup, NotAccepted, …) as status
+		// codes with a short body; surface it for diagnosis.
+		return nil, fmt.Errorf("POST %s: status %d: %s", path, resp.StatusCode, truncate(string(raw)))
+	}
+	return raw, nil
+}
+
+// errTruncLen bounds API error bodies surfaced in messages.
+const errTruncLen = 120
+
+func truncate(s string) string {
+	if len(s) <= errTruncLen {
+		return s
+	}
+	return s[:errTruncLen] + "…"
 }
 
 // ---------------------------------------------------------------------------

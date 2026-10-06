@@ -106,6 +106,7 @@ func (s *Server) exposeClaim(w http.ResponseWriter, r *http.Request) {
 	var st struct {
 		Active   bool   `json:"active"`
 		ClaimURL string `json:"claim_url"`
+		State    string `json:"state"`
 	}
 	if err := json.Unmarshal(result.GetBody(), &st); err != nil {
 		apiError(w, http.StatusBadGateway, "unexpected daemon reply")
@@ -129,7 +130,7 @@ func (s *Server) exposeClaim(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusInternalServerError, "state not saved")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"expose": ex})
+	writeJSON(w, http.StatusOK, map[string]any{"expose": ex, "state": st.State})
 }
 
 // exposeStop removes the tunnel and forgets the claim state.
