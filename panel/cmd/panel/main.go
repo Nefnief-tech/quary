@@ -60,7 +60,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: panel serve | panel migrate | panel admin create -username u -password p")
+	fmt.Fprintln(os.Stderr, "usage: panel serve | panel migrate | panel admin create (credentials via QUARRY_ADMIN_USERNAME / QUARRY_ADMIN_PASSWORD env or -username/-password)")
 	os.Exit(2)
 }
 
@@ -261,7 +261,9 @@ func cmdMigrate() {
 func cmdAdminCreate(args []string) {
 	log := logging.New(true)
 	fs := flag.NewFlagSet("admin create", flag.ExitOnError)
-	username := fs.String("username", "", "admin username")
+	// Credentials may come from the environment instead of argv so they
+	// never appear in process listings or shell history.
+	username := fs.String("username", os.Getenv("QUARRY_ADMIN_USERNAME"), "admin username (prefer QUARRY_ADMIN_USERNAME)")
 	password := fs.String("password", os.Getenv("QUARRY_ADMIN_PASSWORD"), "admin password (prefer QUARRY_ADMIN_PASSWORD)")
 	email := fs.String("email", "", "optional email")
 	_ = fs.Parse(args)

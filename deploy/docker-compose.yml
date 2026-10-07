@@ -1,0 +1,91 @@
+# Quarry production stack. The guided installer (install.sh) writes
+# deploy/.env with the secrets and host paths this file expects; the dev
+# stack lives in docker-compose.dev.yml.
+name: quarry
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set in deploy/.env}
+      POSTGRES_USER: ${POSTGRES_USER:?set in deploy/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in deploy/.env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  panel:
+    build:
+      context: ..
+      dockerfile: deploy/panel.Dockerfile
+    environment:
+      QUARRY_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      QUARRY_HTTP_ADDR: ":8080"
+      QUARRY_GRPC_ADDR: ":9010"
+      QUARRY_DATA_DIR: /var/lib/quarry
+      # Internal mTLS certificate SANs (panel ↔ daemon gRPC).
+      QUARRY_TLS_DNS_NAMES: panel,localhost
+      QUARRY_ENV: production
+    volumes:
+      - panel-data:/var/lib/quarry
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    ports:
+      - "${QUARRY_PANEL_PORT:-8080}:80"
+    depends_on:
+      - panel
+    restart: unless-stopped
+
+  daemon:
+    build:
+      context: ..
+      dockerfile: deploy/daemon.Dockerfile
+    user: "${QUARRY_DOCKER_UID:-1000}:${QUARRY_DOCKER_GID:-1000}"
+    group_add:
+      - "${QUARRY_DOCKER_SOCK_GID:?set QUARRY_DOCKER_SOCK_GID in deploy/.env (stat -c %g /var/run/docker.sock)}"
+    environment:
+      QUARRY_PANEL_ADDR: panel:9010
+      QUARRY_NODE_NAME: ${QUARRY_NODE_NAME:-main}
+      QUARRY_DATA_DIR: /state
+      # Sibling Minecraft containers bind-mount this literal path, so it
+      # must be identical inside the daemon and on the docker host.
+      QUARRY_SERVERS_DIR: ${QUARRY_HOST_SERVERS_DIR:?set in deploy/.env (absolute host path)}
+      QUARRY_CONTAINER_UID: ${QUARRY_DOCKER_UID:-1000}
+      QUARRY_CA_FILE: /ca/ca.crt
+      # Address browsers use to reach ports the daemon publishes (map UI).
+      QUARRY_PUBLIC_HOST: ${QUARRY_PUBLIC_HOST:-localhost}
+      # The daemon is bridged; the handshake router reaches published
+      # server ports through the docker host gateway.
+      QUARRY_ROUTER_DIAL_HOST: host.docker.internal
+      QUARRY_ENV: production
+    ports:
+      # Handshake router relay; servers must not claim this host port while
+      # the router is enabled.
+      - "${QUARRY_ROUTER_PORT:-25565}:25565"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${QUARRY_HOST_DAEMON_DIR:?set in deploy/.env}:/state
+      - ${QUARRY_HOST_SERVERS_DIR}:${QUARRY_HOST_SERVERS_DIR}
+      # The panel generates ca.crt here on first boot; the daemon pins it.
+      - panel-data:/ca:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - panel
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  panel-data:

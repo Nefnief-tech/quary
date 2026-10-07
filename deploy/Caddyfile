@@ -1,0 +1,15 @@
+# Quarry web: static SPA on /, API and console WebSocket proxied to the
+# panel. Caddy handles the WebSocket upgrade transparently.
+:80 {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy panel:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
