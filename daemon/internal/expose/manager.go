@@ -64,6 +64,13 @@ type AgentRuntime interface {
 	StartFrpc(ctx context.Context, id uuid.UUID, configPath string) error
 	StopFrpc(ctx context.Context, id uuid.UUID) error
 	FrpcRunning(ctx context.Context, id uuid.UUID) (bool, error)
+
+	// bore tunnel client containers
+	EnsureBoreImage(ctx context.Context) error
+	StartBoreContainer(ctx context.Context, id uuid.UUID, localPort int32) error
+	StopBore(ctx context.Context, id uuid.UUID) error
+	BoreRunning(ctx context.Context, id uuid.UUID) (bool, error)
+	BoreAssignedAddress(ctx context.Context, id uuid.UUID) (string, error)
 }
 
 // Emitter mirrors setup progress into the server's console stream.
@@ -92,6 +99,7 @@ type Config struct {
 type Status struct {
 	Active   bool   `json:"active"`
 	ClaimURL string `json:"claim_url,omitempty"`
+	Address  string `json:"address,omitempty"`
 	// State carries playit's claim status when the claim is not done:
 	// WaitingForUserVisit (open the link) or WaitingForUser (approve it).
 	State string `json:"state,omitempty"`

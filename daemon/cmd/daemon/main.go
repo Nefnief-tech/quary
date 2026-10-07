@@ -14,6 +14,7 @@ import (
 	"quarry.dev/quarry/daemon/internal/config"
 	"quarry.dev/quarry/daemon/internal/expose"
 	"quarry.dev/quarry/daemon/internal/logging"
+	"quarry.dev/quarry/daemon/internal/router"
 	"quarry.dev/quarry/daemon/internal/runtime"
 	"quarry.dev/quarry/daemon/internal/servers"
 	"quarry.dev/quarry/daemon/internal/state"
@@ -72,7 +73,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := client.New(cfg, store, log, manager, playit).Run(ctx); err != nil {
+	rtr := router.NewManager(log, cfg.RouterDialHost)
+	if err := client.New(cfg, store, log, manager, playit, rtr).Run(ctx); err != nil {
 		log.Error("daemon failed", "err", err)
 		os.Exit(1)
 	}

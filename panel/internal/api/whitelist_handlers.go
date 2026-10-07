@@ -102,7 +102,7 @@ func (s *Server) whitelistAdd(w http.ResponseWriter, r *http.Request) {
 
 // whitelistRemove removes a player from the whitelist.
 func (s *Server) whitelistRemove(w http.ResponseWriter, r *http.Request) {
-	name := r.URL.Query().Get("name")
+	name := queryValue(r, "name")
 	if !mcName.MatchString(name) {
 		apiError(w, http.StatusBadRequest, "invalid player name")
 		return

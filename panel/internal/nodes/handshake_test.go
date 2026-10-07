@@ -59,7 +59,7 @@ func TestHandshake(t *testing.T) {
 	log := slog.Default()
 	svc := nodes.NewService(pool, q, ca, audit.New(q, log), log)
 	chanMgr := nodes.NewChannelManager(log)
-	grpcSrv := nodes.NewGRPCServer(svc, log, chanMgr, func(*nodesv1.Event) {})
+	grpcSrv := nodes.NewGRPCServer(svc, log, chanMgr, func(*nodesv1.Event) {}, nil)
 
 	nodeID := uuid.New()
 	if _, err := q.CreateNode(ctx, gen.CreateNodeParams{

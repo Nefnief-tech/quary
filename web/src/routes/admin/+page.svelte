@@ -5,6 +5,7 @@
 	import { auth } from '$lib/auth.svelte';
 
 	let nodes = $state<Node[]>([]);
+	let servers = $state<{ id: string; name: string }[]>([]);
 	let users = $state<User[]>([]);
 	let error = $state('');
 	let newNodeName = $state('');
@@ -14,6 +15,39 @@
 	let allocFrom = $state(25565);
 	let allocTo = $state(25575);
 	let newUser = $state({ username: '', password: '', role: 'user' });
+
+	// handshake router settings (admin)
+	let routerCfg = $state({ enabled: false, port: 25565, default_server_id: '' });
+	let routerBusy = $state(false);
+	let routerNote = $state('');
+
+	async function loadRouter() {
+		try {
+			routerCfg = await api.get<typeof routerCfg>('/api/v1/settings/router');
+		} catch {
+			/* admin-only */
+		}
+	}
+
+	async function saveRouter(e: SubmitEvent) {
+		e.preventDefault();
+		routerBusy = true;
+		routerNote = '';
+		try {
+			routerCfg = await api.put<typeof routerCfg>('/api/v1/settings/router', {
+				enabled: routerCfg.enabled,
+				port: Number(routerCfg.port),
+				default_server_id: routerCfg.default_server_id
+			});
+			routerNote = routerCfg.enabled
+				? 'Router on. Map domains to servers from each server’s Public access card.'
+				: 'Router disabled.';
+		} catch (err) {
+			routerNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			routerBusy = false;
+		}
+	}
 
 	// frp tunnel provider settings (admin)
 	let frp = $state({ enabled: false, server_addr: '', server_port: 7000, token_set: false });
@@ -58,6 +92,7 @@
 	async function refresh() {
 		nodes = await api.get<Node[]>('/api/v1/nodes');
 		users = await api.get<User[]>('/api/v1/users');
+		servers = await api.get<{ id: string; name: string }[]>('/api/v1/servers').catch(() => []);
 	}
 
 	onMount(async () => {
@@ -68,6 +103,7 @@
 		}
 		await refresh();
 		loadFrp();
+		loadRouter();
 	});
 
 	async function createNode() {
@@ -289,6 +325,43 @@
 				{frpBusy ? 'Saving…' : 'Save settings'}
 			</button>
 			{#if frpNote}<p class="text-xs text-slate-500">{frpNote}</p>{/if}
+		</div>
+	</form>
+</section>
+
+<section class="mb-10">
+	<h2 class="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">Handshake router</h2>
+	<form onsubmit={saveRouter} class="card space-y-4 p-5">
+		<p class="text-sm text-slate-400">
+			One port for every server: the relay reads the Minecraft handshake and routes
+			each connection by the hostname the player typed. Map domains per server;
+			players join <span class="font-mono text-slate-300">your-domain:{routerCfg.port}</span>.
+			Servers must not use the router port themselves.
+		</p>
+		<label class="flex items-center gap-2.5">
+			<input type="checkbox" class="h-4 w-4 accent-emerald-500" bind:checked={routerCfg.enabled} />
+			<span class="text-sm text-slate-200">Enable handshake router</span>
+		</label>
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+			<label class="block">
+				<span class="label">Router port</span>
+				<input type="number" min="1024" max="65535" class="input" bind:value={routerCfg.port} />
+			</label>
+			<label class="block md:col-span-3">
+				<span class="label">Default server (unmatched hostnames)</span>
+				<select class="select" bind:value={routerCfg.default_server_id}>
+					<option value="">refuse unknown hostnames</option>
+					{#each servers as srv (srv.id)}
+						<option value={srv.id}>{srv.name}</option>
+					{/each}
+				</select>
+			</label>
+		</div>
+		<div class="flex items-center gap-4">
+			<button type="submit" class="btn btn-primary" disabled={routerBusy}>
+				{routerBusy ? 'Saving…' : 'Save settings'}
+			</button>
+			{#if routerNote}<p class="text-xs text-slate-500">{routerNote}</p>{/if}
 		</div>
 	</form>
 </section>

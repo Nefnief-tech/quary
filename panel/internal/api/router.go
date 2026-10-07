@@ -45,6 +45,13 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("GET /api/v1/settings/expose", s.requireAuth(http.HandlerFunc(s.getExposeSettings)))
 	mux.Handle("PUT /api/v1/settings/expose", s.requireAuth(http.HandlerFunc(s.setExposeSettings)))
 
+	// Handshake router (admin config; domains per server)
+	mux.Handle("GET /api/v1/settings/router", s.requireAuth(http.HandlerFunc(s.getRouterSettings)))
+	mux.Handle("PUT /api/v1/settings/router", s.requireAuth(http.HandlerFunc(s.setRouterSettings)))
+	mux.Handle("GET /api/v1/servers/{id}/domains", s.requireAuth(http.HandlerFunc(s.listServerDomains)))
+	mux.Handle("POST /api/v1/servers/{id}/domains", s.requireAuth(http.HandlerFunc(s.createServerDomain)))
+	mux.Handle("DELETE /api/v1/servers/{id}/domains", s.requireAuth(http.HandlerFunc(s.deleteServerDomain)))
+
 	// Runners (version catalog for the create form)
 	mux.Handle("GET /api/v1/runners", s.requireAuth(http.HandlerFunc(s.listRunners)))
 

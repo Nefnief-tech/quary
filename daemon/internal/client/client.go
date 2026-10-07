@@ -23,6 +23,7 @@ import (
 
 	"quarry.dev/quarry/daemon/internal/config"
 	"quarry.dev/quarry/daemon/internal/expose"
+	"quarry.dev/quarry/daemon/internal/router"
 	"quarry.dev/quarry/daemon/internal/servers"
 	"quarry.dev/quarry/daemon/internal/state"
 	nodesv1 "quarry.dev/quarry/proto/gen/go/quarry/node/v1"
@@ -41,10 +42,11 @@ type Client struct {
 	log     *slog.Logger
 	manager *servers.Manager
 	playit  *expose.Manager
+	router  *router.Manager
 }
 
-func New(cfg config.Config, store *state.Store, log *slog.Logger, manager *servers.Manager, playit *expose.Manager) *Client {
-	return &Client{cfg: cfg, store: store, log: log, manager: manager, playit: playit}
+func New(cfg config.Config, store *state.Store, log *slog.Logger, manager *servers.Manager, playit *expose.Manager, rtr *router.Manager) *Client {
+	return &Client{cfg: cfg, store: store, log: log, manager: manager, playit: playit, router: rtr}
 }
 
 // Run keeps the daemon connected until ctx is cancelled, reconnecting with

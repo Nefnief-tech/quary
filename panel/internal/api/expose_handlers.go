@@ -55,7 +55,11 @@ func (s *Server) exposeStart(w http.ResponseWriter, r *http.Request) {
 	}
 	req, _ := decode[exposeStartRequest](w, r)
 
-	if req.Provider == "frp" {
+	switch req.Provider {
+	case "bore":
+		s.exposeStartBore(w, r, sv)
+		return
+	case "frp":
 		s.exposeStartFrp(w, r, sv, req.RemotePort)
 		return
 	}
@@ -99,6 +103,44 @@ func (s *Server) exposeStart(w http.ResponseWriter, r *http.Request) {
 type exposeStartRequest struct {
 	Provider   string `json:"provider"`
 	RemotePort int32  `json:"remote_port"`
+}
+
+// exposeStartBore opens a zero-account bore.pub tunnel for this server.
+func (s *Server) exposeStartBore(w http.ResponseWriter, r *http.Request, sv gen.Server) {
+	alloc, err := s.q.GetAllocationForServer(r.Context(), sv.ID)
+	if err != nil {
+		apiError(w, http.StatusInternalServerError, "server allocation missing")
+		return
+	}
+	result, ok := s.sendExpose(w, r, sv, &nodesv1.Command{
+		Action: &nodesv1.Command_ExposeStart{ExposeStart: &nodesv1.ExposeStart{
+			ServerId:  sv.ID.String(),
+			Provider:  "bore",
+			LocalPort: alloc.Port,
+		}},
+	})
+	if !ok {
+		return
+	}
+	var st struct {
+		Active  bool   `json:"active"`
+		Address string `json:"address"`
+	}
+	if err := json.Unmarshal(result.GetBody(), &st); err != nil {
+		apiError(w, http.StatusBadGateway, "unexpected daemon reply")
+		return
+	}
+	ex := &servers.ExposeConfig{Provider: "bore", Active: st.Active, Address: st.Address}
+	if err := s.serverSvc.SetExpose(r.Context(), sv.ID, ex); err != nil {
+		apiError(w, http.StatusInternalServerError, "tunnel started but state not saved")
+		return
+	}
+	s.auditLog.Record(r.Context(), audit.Entry{
+		Actor: audit.ActorUser, Action: "server.expose_started",
+		UserID: actorID(r), ResourceType: "server", ResourceID: sv.ID.String(),
+		IP: clientIP(r), Metadata: map[string]any{"provider": "bore", "address": st.Address},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"expose": ex})
 }
 
 // exposeStartFrp claims a remote port on the configured frps for this

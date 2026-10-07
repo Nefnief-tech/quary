@@ -56,7 +56,16 @@ services:
       QUARRY_ENROLLMENT_TOKEN: ${QUARRY_ENROLLMENT_TOKEN:-}
       # Address browsers use to reach ports the daemon publishes (map UI).
       QUARRY_PUBLIC_HOST: ${QUARRY_PUBLIC_HOST:-localhost}
+      # The daemon is bridged; the router reaches published server ports
+      # through the docker host gateway.
+      QUARRY_ROUTER_DIAL_HOST: host.docker.internal
       QUARRY_ENV: dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Handshake router relay. Servers must not claim this host port while
+      # the router is enabled (move them via the server's Network settings).
+      - "${QUARRY_ROUTER_PORT:-25565}:25565"
     volumes:
       - ${QUARRY_HOST_DAEMON_DIR:-../data/daemon}:/state
       # Same literal path inside the daemon and on the host (see

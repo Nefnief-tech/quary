@@ -33,6 +33,7 @@ import (
 	"quarry.dev/quarry/panel/internal/marketplace"
 	"quarry.dev/quarry/panel/internal/nodes"
 	"quarry.dev/quarry/panel/internal/players"
+	"quarry.dev/quarry/panel/internal/router"
 	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/servers"
 	"quarry.dev/quarry/panel/internal/settings"
@@ -163,6 +164,9 @@ func cmdServe() {
 	playerSvc := players.NewService(rt.q, chanMgr, hub, log)
 	go playerSvc.Run(ctx)
 
+	// Handshake router: pushes the domain table to nodes on change/connect.
+	routerSvc := router.NewService(rt.q, chanMgr, log)
+
 	// HTTP API + node services
 	nodeSvc := nodes.NewService(rt.pool, rt.q, rt.ca, rt.auditLog, log)
 	apiServer := api.New(api.Deps{
@@ -180,6 +184,7 @@ func cmdServe() {
 		Hub:         hub,
 		SealKey:     rt.sealKey,
 		SettingsSvc: settingsSvc,
+		RouterSvc:   routerSvc,
 	})
 	go func() {
 		if err := apiServer.Run(ctx); err != nil {
@@ -194,7 +199,7 @@ func cmdServe() {
 		log.Error("grpc listener failed", "err", err)
 		os.Exit(1)
 	}
-	grpcServer := nodes.NewGRPCServer(nodeSvc, log, chanMgr, serverSvc.HandleEvent)
+	grpcServer := nodes.NewGRPCServer(nodeSvc, log, chanMgr, serverSvc.HandleEvent, routerSvc.NodeOnline)
 	nodesv1.RegisterNodeAgentServiceServer(gs, grpcServer)
 	go func() {
 		log.Info("node grpc listening", "addr", cfg.GRPCAddr)

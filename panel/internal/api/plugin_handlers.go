@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"quarry.dev/quarry/panel/internal/audit"
@@ -52,15 +53,20 @@ func (s *Server) searchPlugins(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	query := r.URL.Query().Get("q")
+	query := queryValue(r, "q")
 	offset := 0
-	if v := r.URL.Query().Get("offset"); v != "" {
+	if v := queryValue(r, "offset"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 {
 			apiError(w, http.StatusBadRequest, "invalid offset")
 			return
 		}
 		offset = n
+	}
+	// Bound the free-text query before it becomes an upstream request.
+	query = strings.TrimSpace(query)
+	if len(query) > 100 {
+		query = query[:100]
 	}
 	hits, total, err := s.modrinth.Search(r.Context(), query, sv.McVersion, loader, 20, offset)
 	if err != nil {
@@ -161,7 +167,7 @@ func (s *Server) deleteServerPlugin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	name := path.Base(r.URL.Query().Get("name"))
+	name := path.Base(queryValue(r, "name"))
 	if name == "" || name == "." || name == "/" {
 		apiError(w, http.StatusBadRequest, "name is required")
 		return

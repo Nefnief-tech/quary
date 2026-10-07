@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -305,7 +306,7 @@ var wsUpgrader = websocket.Upgrader{
 // consoleWS streams console lines/status/stats to the browser and forwards
 // typed input to the server.
 func (s *Server) consoleWS(w http.ResponseWriter, r *http.Request) {
-	serverID, _, err := hub.VerifyWSToken(s.sealKey, r.URL.Query().Get("token"))
+	serverID, _, err := hub.VerifyWSToken(s.sealKey, queryValue(r, "token"))
 	if err != nil {
 		apiError(w, http.StatusUnauthorized, "invalid console token")
 		return
@@ -456,7 +457,7 @@ func (s *Server) listServerFiles(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusForbidden, "file.read required")
 		return
 	}
-	path := r.URL.Query().Get("path")
+	path := sanitizeQueryPath(queryValue(r, "path"))
 	result, err := s.sendServerCommand(r.Context(), sv, &nodesv1.Command{
 		Action: &nodesv1.Command_ListFiles{ListFiles: &nodesv1.ListFiles{
 			ServerId: sv.ID.String(), Path: path,
@@ -482,7 +483,7 @@ func (s *Server) readServerFile(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusForbidden, "file.read required")
 		return
 	}
-	path := r.URL.Query().Get("path")
+	path := sanitizeQueryPath(queryValue(r, "path"))
 	if path == "" {
 		apiError(w, http.StatusBadRequest, "path is required")
 		return
@@ -560,12 +561,12 @@ func (s *Server) deleteServerFile(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusForbidden, "file.write required")
 		return
 	}
-	path := r.URL.Query().Get("path")
+	path := sanitizeQueryPath(queryValue(r, "path"))
 	if path == "" {
 		apiError(w, http.StatusBadRequest, "path is required")
 		return
 	}
-	recursive := r.URL.Query().Get("recursive") == "true"
+	recursive := queryValue(r, "recursive") == "true"
 	result, err := s.sendServerCommand(r.Context(), sv, &nodesv1.Command{
 		Action: &nodesv1.Command_DeleteFile{DeleteFile: &nodesv1.DeleteFile{
 			ServerId: sv.ID.String(), Path: path, Recursive: recursive,
@@ -684,6 +685,22 @@ func (s *Server) listAllocations(w http.ResponseWriter, r *http.Request) {
 		out = append(out, entry)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// sanitizeQueryPath bounds and cleans a file-manager path from the query
+// string before it travels to the node (the daemon re-sanitizes against
+// traversal on its side).
+func sanitizeQueryPath(p string) string {
+	p = strings.TrimSpace(p)
+	if len(p) > 256 {
+		return ""
+	}
+	for _, r := range p {
+		if r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+	return p
 }
 
 // writeRawJSON writes pre-encoded JSON.

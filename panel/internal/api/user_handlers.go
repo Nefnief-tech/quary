@@ -158,10 +158,10 @@ func (s *Server) listRoles(w http.ResponseWriter, r *http.Request) {
 
 func pagination(r *http.Request) (limit, offset int32) {
 	limit = 50
-	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 200 {
+	if v, err := strconv.Atoi(queryValue(r, "limit")); err == nil && v > 0 && v <= 200 {
 		limit = int32(v)
 	}
-	if v, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && v >= 0 {
+	if v, err := strconv.Atoi(queryValue(r, "offset")); err == nil && v >= 0 {
 		offset = int32(v)
 	}
 	return limit, offset

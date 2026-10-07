@@ -91,6 +91,13 @@ type RolePermission struct {
 	Permission string    `json:"permission"`
 }
 
+type RouterDomain struct {
+	ID        uuid.UUID `json:"id"`
+	ServerID  uuid.UUID `json:"server_id"`
+	Domain    string    `json:"domain"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type RunnerVersion struct {
 	Runner      string     `json:"runner"`
 	McVersion   string     `json:"mc_version"`

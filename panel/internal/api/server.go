@@ -19,6 +19,7 @@ import (
 	"quarry.dev/quarry/panel/internal/hub"
 	"quarry.dev/quarry/panel/internal/marketplace"
 	"quarry.dev/quarry/panel/internal/nodes"
+	"quarry.dev/quarry/panel/internal/router"
 	"quarry.dev/quarry/panel/internal/runners"
 	"quarry.dev/quarry/panel/internal/servers"
 	"quarry.dev/quarry/panel/internal/settings"
@@ -42,6 +43,7 @@ type Server struct {
 	sealKey     []byte
 	limiter     *auth.LoginLimiter
 	settingsSvc *settings.Service
+	routerSvc   *router.Service
 }
 
 // Deps bundles everything the API needs.
@@ -60,6 +62,7 @@ type Deps struct {
 	Hub         *hub.Hub
 	SealKey     []byte
 	SettingsSvc *settings.Service
+	RouterSvc   *router.Service
 }
 
 func New(d Deps) *Server {
@@ -80,6 +83,7 @@ func New(d Deps) *Server {
 		sealKey:     d.SealKey,
 		limiter:     auth.NewLoginLimiter(15*time.Second, 5),
 		settingsSvc: d.SettingsSvc,
+		routerSvc:   d.RouterSvc,
 	}
 }
 

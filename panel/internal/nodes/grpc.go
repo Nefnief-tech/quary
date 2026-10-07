@@ -27,10 +27,12 @@ type GRPCServer struct {
 	chanMgr *ChannelManager
 	// onEvent receives daemon events (console, stats, status).
 	onEvent func(*nodesv1.Event)
+	// onNodeOnline is called when a daemon channel opens (config push).
+	onNodeOnline func(uuid.UUID)
 }
 
-func NewGRPCServer(svc *Service, log *slog.Logger, chanMgr *ChannelManager, onEvent func(*nodesv1.Event)) *GRPCServer {
-	return &GRPCServer{svc: svc, log: log, chanMgr: chanMgr, onEvent: onEvent}
+func NewGRPCServer(svc *Service, log *slog.Logger, chanMgr *ChannelManager, onEvent func(*nodesv1.Event), onNodeOnline func(uuid.UUID)) *GRPCServer {
+	return &GRPCServer{svc: svc, log: log, chanMgr: chanMgr, onEvent: onEvent, onNodeOnline: onNodeOnline}
 }
 
 func (g *GRPCServer) RegisterNode(ctx context.Context, req *nodesv1.RegisterNodeRequest) (*nodesv1.RegisterNodeResponse, error) {
@@ -82,6 +84,9 @@ func (g *GRPCServer) Channel(stream nodesv1.NodeAgentService_ChannelServer) erro
 	conn, done := g.chanMgr.Register(nodeID)
 	defer done()
 	g.log.Info("node channel open", "node_id", nodeID)
+	if g.onNodeOnline != nil {
+		g.onNodeOnline(nodeID)
+	}
 
 	// Forward panel commands down to the daemon.
 	forwardDone := make(chan struct{})

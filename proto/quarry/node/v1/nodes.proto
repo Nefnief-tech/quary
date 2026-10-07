@@ -109,7 +109,24 @@ message Command {
     ExposeStart expose_start = 13;
     ExposeClaim expose_claim = 14;
     ExposeStop expose_stop = 15;
+    RouterConfig router_config = 16;
   }
+}
+
+// RouterConfig pushes the handshake-router table to a node: which domain
+// routes to which local server port, and where unmatched clients go. The
+// panel sends it whenever the mapping changes and after every reconnect.
+message RouterConfig {
+  bool enabled = 1;
+  int32 port = 2;
+  // Port for clients whose host matches no entry; 0 = refuse them.
+  int32 default_port = 3;
+  repeated RouterEntry entries = 4;
+}
+
+message RouterEntry {
+  string domain = 1;
+  int32 local_port = 2;
 }
 
 // ExposeStart begins tunnel setup for a server. Provider selects the

@@ -12,6 +12,16 @@ import (
 
 const maxBodyBytes = 1 << 20 // 1 MiB
 
+// queryValue returns the first value of a query parameter. Handlers use
+// this instead of url.Values.Get so the raw map is the single access path.
+func queryValue(r *http.Request, key string) string {
+	values := r.URL.Query()
+	if len(values[key]) == 0 {
+		return ""
+	}
+	return values[key][0]
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }

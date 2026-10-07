@@ -41,6 +41,10 @@ type Config struct {
 	// daemon publishes (the map webserver). Empty = fall back to the
 	// machine hostname on the wire.
 	PublicHost string
+	// RouterDialHost is where the handshake router reaches the servers'
+	// published ports. Empty = 127.0.0.1 (host-networked daemon); a bridged
+	// daemon sets this to the docker host gateway.
+	RouterDialHost string
 }
 
 func Load() (Config, error) {
@@ -55,6 +59,7 @@ func Load() (Config, error) {
 		HeartbeatInterval: 10 * time.Second,
 		ContainerUID:      1500,
 		PublicHost:        os.Getenv("QUARRY_PUBLIC_HOST"),
+		RouterDialHost:    os.Getenv("QUARRY_ROUTER_DIAL_HOST"),
 	}
 	if v := os.Getenv("QUARRY_CONTAINER_UID"); v != "" {
 		uid, err := strconv.Atoi(v)

@@ -108,6 +108,7 @@ func (c *Client) runChannel(ctx context.Context, api nodesv1.NodeAgentServiceCli
 	// the restart.
 	go c.playit.Reconcile(context.Background())
 	go c.playit.ReconcileFrp(context.Background())
+	go c.playit.ReconcileBore(context.Background())
 
 	for {
 		msg, err := stream.Recv()
@@ -168,6 +169,13 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		if err != nil {
 			return fmt.Errorf("invalid server id: %w", err)
 		}
+		if action.ExposeStart.GetProvider() == "bore" {
+			st, err := c.playit.StartBore(ctx, serverID, action.ExposeStart.GetLocalPort(), em)
+			if err != nil {
+				return err
+			}
+			return marshalBody(st, body)
+		}
 		if action.ExposeStart.GetProvider() == "frp" {
 			st, err := c.playit.StartFrp(ctx, serverID, expose.FrpParams{
 				ServerAddr: action.ExposeStart.GetFrpsAddr(),
@@ -196,6 +204,9 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 			return err
 		}
 		return marshalBody(st, body)
+	case *nodesv1.Command_RouterConfig:
+		c.router.ApplyConfig(ctx, action.RouterConfig)
+		return nil
 	case *nodesv1.Command_ExposeStop:
 		serverID, err := uuid.Parse(action.ExposeStop.GetServerId())
 		if err != nil {
@@ -203,6 +214,9 @@ func (c *Client) dispatch(ctx context.Context, cmd *nodesv1.Command, em *emitter
 		}
 		if action.ExposeStop.GetProvider() == "frp" {
 			return c.playit.StopFrp(ctx, serverID, em)
+		}
+		if action.ExposeStop.GetProvider() == "bore" {
+			return c.playit.StopBore(ctx, serverID, em)
 		}
 		return c.playit.Stop(ctx, serverID, em)
 	case *nodesv1.Command_ListFiles:

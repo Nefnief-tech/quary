@@ -190,7 +190,7 @@
 		}
 	}
 
-	// playit.gg expose state
+	// expose state
 	let exposeBusy = $state(false);
 	let exposeNote = $state('');
 	let exposeAddrInput = $state('');
@@ -199,15 +199,65 @@
 	let frpEnabled = $state(false);
 	let frpRemotePort = $state(25565);
 
+	// router domains (this server)
+	let domains = $state<{ id: string; domain: string }[]>([]);
+	let newDomain = $state('');
+	let domainsNote = $state('');
+
+	async function loadDomains() {
+		try {
+			domains = await api.get<typeof domains>(`/api/v1/servers/${id}/domains`);
+		} catch {
+			domains = [];
+		}
+	}
+
+	async function addDomain(e: SubmitEvent) {
+		e.preventDefault();
+		domainsNote = '';
+		try {
+			await api.post(`/api/v1/servers/${id}/domains`, { domain: newDomain });
+			newDomain = '';
+			await loadDomains();
+		} catch (err) {
+			domainsNote = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	async function removeDomain(dom: { id: string }) {
+		try {
+			await api.del(`/api/v1/servers/${id}/domains?id=${dom.id}`);
+			await loadDomains();
+		} catch (err) {
+			domainsNote = err instanceof Error ? err.message : String(err);
+		}
+	}
+
 	onMount(async () => {
 		api
 			.get<{ frp: { enabled: boolean } }>('/api/v1/settings/expose')
 			.then((res) => (frpEnabled = res.frp.enabled))
 			.catch(() => {});
+		loadDomains();
 	});
 
 	function applyExpose(ex: Server['expose']) {
 		if (server) server = { ...server, expose: ex };
+	}
+
+	async function startBore() {
+		exposeBusy = true;
+		exposeNote = '';
+		try {
+			const res = await api.post<{ expose: Server['expose'] }>(`/api/v1/servers/${id}/expose`, {
+				provider: 'bore'
+			});
+			applyExpose(res.expose);
+		} catch (err) {
+			exposeNote = err instanceof Error ? err.message : String(err);
+		} finally {
+			exposeBusy = false;
+		}
 	}
 
 	async function startFrp() {
@@ -1532,7 +1582,10 @@
 				{:else}
 					<div class="flex items-center gap-2">
 						<button class="btn btn-secondary flex-1 px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startExpose}>
-							<i class="ph ph-globe-hemisphere-west"></i> {exposeBusy ? 'Setting up…' : 'playit.gg'}
+							<i class="ph ph-globe-hemisphere-west"></i> playit
+						</button>
+						<button class="btn btn-secondary flex-1 px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startBore} title="Free relay, no account; the port rotates on restart">
+							<i class="ph ph-broadcast"></i> bore
 						</button>
 						{#if frpEnabled}
 							<button class="btn btn-secondary flex-1 px-3 py-1.5 text-xs" disabled={exposeBusy} onclick={startFrp}>
@@ -1553,15 +1606,47 @@
 						</div>
 					{/if}
 					<p class="mt-1.5 text-[10px] text-zinc-600">
-						{#if frpEnabled}
-							playit.gg is the free hosted relay; frp uses the server configured in Admin.
-						{:else}
-							Free public tunnel on any Minecraft version — no port forwarding, works on every runner.
-						{/if}
+						playit = free hosted relay (1 per account) · bore = free, no account, port rotates ·
+						{#if frpEnabled}frp = your relay from Admin{:else}frp = enable in Admin{/if}
 					</p>
 				{/if}
 				{#if exposeNote}
 					<p class="mt-2 text-[10px] text-zinc-500">{exposeNote}</p>
+				{/if}
+			</div>
+
+			<div class="card p-4">
+				<h3 class="mb-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Connect domains</h3>
+				<form class="mb-2 flex items-center gap-1.5" onsubmit={addDomain}>
+					<input
+						class="input flex-1 py-1 text-xs"
+						placeholder="survival.example.com"
+						bind:value={newDomain}
+						required
+					/>
+					<button type="submit" class="btn btn-secondary px-2.5 py-1 text-xs">Add</button>
+				</form>
+				<ul class="space-y-0.5">
+					{#each domains as dom (dom.id)}
+						<li class="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-zinc-800/50">
+							<i class="ph ph-at text-zinc-600"></i>
+							<span class="truncate font-mono text-xs text-zinc-300">{dom.domain}</span>
+							<button
+								class="ml-auto text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-rose-300"
+								onclick={() => removeDomain(dom)}
+								title="Remove domain"
+							>
+								<i class="ph ph-trash text-sm"></i>
+							</button>
+						</li>
+					{:else}
+						<li class="px-1 py-1 text-[10px] text-zinc-600">
+							With the handshake router on (Admin), players join this server via these hostnames on the router port.
+						</li>
+					{/each}
+				</ul>
+				{#if domainsNote}
+					<p class="mt-2 text-[10px] text-zinc-500">{domainsNote}</p>
 				{/if}
 			</div>
 		</aside>
